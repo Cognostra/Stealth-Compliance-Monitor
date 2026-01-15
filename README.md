@@ -95,3 +95,4 @@ Graceful Shutdown
 If the scan is interrupted (Ctrl+C), the monitor will automatically hydrate current progress from the Write-Ahead Log (WAL) and generate a partial report.
 Disclaimer
 This software is designed strictly for authorized testing and quality assurance. Do not execute this tool against targets for which you do not hold explicit permission or ownership.
+"# Stealth-Compliance-Monitor" 
