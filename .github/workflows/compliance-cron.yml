@@ -1,0 +1,60 @@
+name: Compliance Monitor Cron
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Run at midnight every Sunday
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  compliance-audit:
+    runs-on: ubuntu-latest
+    name: Run Compliance Audit
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium
+
+      - name: Start OWASP ZAP Daemon
+        # Run ZAP in background (daemon mode) on port 8080
+        # -config api.disablekey=true: Disable API key for easier CI integration
+        # -config api.addrs.addr.name=.*: Allow connections from any host (important for docker networking)
+        run: |
+          docker pull owasp/zap2docker-stable
+          docker run -u zap -p 8080:8080 -d owasp/zap2docker-stable zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.disablekey=true -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+          echo "Waiting for ZAP to initialize..."
+          sleep 20
+
+      - name: Run Compliance Audit
+        env:
+          # Secrets provided by GitHub Repo Settings
+          LIVE_URL: ${{ secrets.LIVE_URL }}
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          # Localhost inside the runner, mapped to the docker container
+          ZAP_PROXY_URL: http://localhost:8080
+          HEADLESS: true
+          CI: true
+        run: npm start
+
+      - name: Upload Audit Artifacts
+        if: always() # Upload even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-report
+          path: |
+            reports/AUDIT_SUMMARY.md
+            reports/*.json
+            screenshots/
+          retention-days: 30

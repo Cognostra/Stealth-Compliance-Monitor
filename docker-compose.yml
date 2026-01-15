@@ -1,0 +1,87 @@
+# Stealth Compliance Monitor - Docker Compose
+# Run with: docker-compose up --build
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # OWASP ZAP Proxy - Security Scanner
+  # ===========================================
+  zaproxy:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    container_name: zap-proxy
+    command: >
+      zap.sh -daemon
+      -host 0.0.0.0
+      -port 8080
+      -config api.addrs.addr.name=.*
+      -config api.addrs.addr.regex=true
+      -config api.key=disable
+    ports:
+      - "8080:8080"  # Expose for host inspection
+    networks:
+      - compliance-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/JSON/core/view/version/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ===========================================
+  # Compliance Bot - Main Application
+  # ===========================================
+  compliance-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: compliance-bot
+    depends_on:
+      zaproxy:
+        condition: service_healthy
+    environment:
+      # ZAP Proxy - Use service name for inter-container communication
+      ZAP_PROXY_URL: http://zaproxy:8080
+
+      # Pass through from .env file
+      LIVE_URL: ${LIVE_URL}
+      TEST_EMAIL: ${TEST_EMAIL}
+      TEST_PASSWORD: ${TEST_PASSWORD}
+
+      # Optional overrides (with defaults)
+      MIN_DELAY_MS: ${MIN_DELAY_MS:-2000}
+      MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
+      USER_AGENT: ${USER_AGENT:-LSCM-Bot/1.0 (Live Site Compliance Monitor)}
+
+      # Directories (container paths)
+      SCREENSHOTS_DIR: /app/screenshots
+      REPORTS_DIR: /app/reports
+
+      # Playwright specific
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+    volumes:
+      # Mount output directories to host for persistence
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - ./screenshots:/app/screenshots
+      - ./snapshots:/app/snapshots
+    networks:
+      - compliance-net
+    # Don't restart on exit - this is a one-shot job
+    restart: "no"
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  compliance-net:
+    driver: bridge
+    name: compliance-net

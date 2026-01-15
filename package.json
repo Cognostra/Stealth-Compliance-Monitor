@@ -1,0 +1,51 @@
+{
+    "name": "live-site-compliance-monitor",
+    "version": "1.0.0",
+    "description": "A read-only automated agent that navigates live production websites to verify user flows, performance metrics, and security headers",
+    "main": "dist/index.js",
+    "scripts": {
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "dev": "ts-node src/index.ts",
+        "audit": "ts-node src/index.ts --full-audit",
+        "lint": "eslint src/**/*.ts",
+        "clean": "rimraf dist",
+        "report": "npx playwright show-report",
+        "report:open": "npx playwright show-report --host 0.0.0.0"
+    },
+    "keywords": [
+        "compliance",
+        "security",
+        "lighthouse",
+        "playwright",
+        "owasp-zap",
+        "audit"
+    ],
+    "author": "",
+    "license": "MIT",
+    "dependencies": {
+        "@axe-core/playwright": "^4.11.0",
+        "@types/pixelmatch": "^5.2.6",
+        "@types/pngjs": "^6.0.5",
+        "chalk": "^4.1.2",
+        "dotenv": "^16.3.1",
+        "lighthouse": "^11.4.0",
+        "p-limit": "^5.0.0",
+        "pixelmatch": "^7.1.0",
+        "playwright": "^1.40.0",
+        "pngjs": "^7.0.0",
+        "winston": "^3.11.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "@typescript-eslint/eslint-plugin": "^6.13.0",
+        "@typescript-eslint/parser": "^6.13.0",
+        "eslint": "^8.55.0",
+        "rimraf": "^5.0.5",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.3.0"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

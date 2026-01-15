@@ -1,0 +1,782 @@
+/**
+ * BrowserService
+ * 
+ * Wraps Playwright to enforce human-like behavior and proxy all traffic through ZAP.
+ * The raw Playwright page object is NEVER exposed publicly to enforce safety constraints.
+ * 
+ * REFACTORED: Now uses ScannerRegistry (Observer Pattern) instead of hardcoded scanner dependencies.
+ */
+
+import { chromium, Browser, BrowserContext, Page, Response } from 'playwright';
+import { getConfig, EnvConfig } from '../config/env';
+import { logger } from '../utils/logger';
+import { ScannerRegistry, IScanner } from '../core/ScannerRegistry';
+
+// Default scanners (lazy-loaded for backward compatibility)
+import { NetworkSpy, NetworkIncident } from './NetworkSpy';
+import { SecretScanner, LeakedSecret } from './SecretScanner';
+import { ConsoleMonitor, ConsoleError } from './ConsoleMonitor';
+import { SupabaseSecurityScanner, SupabaseSecurityIssue, SupabaseDetection } from './SupabaseSecurityScanner';
+import { FrontendVulnerabilityScanner, VulnerableLibrary } from './FrontendVulnerabilityScanner';
+
+export { ConsoleError }; // Re-export for compatibility with other services
+
+/**
+ * Navigation result returned by goto()
+ */
+export interface NavigationResult {
+    url: string;
+    status: number | null;
+    ok: boolean;
+    headers: Map<string, string>;
+    timing: {
+        started: number;
+        finished: number;
+        duration: number;
+    };
+}
+
+/**
+ * Element interaction result
+ */
+export interface InteractionResult {
+    success: boolean;
+    selector: string;
+    action: string;
+    error?: string;
+}
+
+/**
+ * Screenshot result
+ */
+export interface ScreenshotResult {
+    path: string;
+    timestamp: number;
+}
+
+/**
+ * BrowserService Class
+ * 
+ * Provides a safe wrapper around Playwright that:
+ * - Enforces human-like delays between all actions
+ * - Routes all traffic through ZAP proxy
+ * - Never exposes the raw page object
+ * - Handles cleanup properly
+ * - Uses ScannerRegistry for plugin-style scanner management
+ */
+export class BrowserService {
+    private static activeInstances: Set<BrowserService> = new Set();
+
+    private browser: Browser | null = null;
+    private context: BrowserContext | null = null;
+    private page: Page | null = null;
+    private config: EnvConfig;
+    private isInitialized: boolean = false;
+    private lastResponseHeaders: Map<string, string> = new Map();
+
+    // Scanner Registry (Observer Pattern)
+    private scannerRegistry: ScannerRegistry;
+
+    // References to default scanners for backward compatibility
+    private networkSpy: NetworkSpy | null = null;
+    private secretScanner: SecretScanner | null = null;
+    private consoleMonitor: ConsoleMonitor | null = null;
+    private supabaseScanner: SupabaseSecurityScanner | null = null;
+    private vulnScanner: FrontendVulnerabilityScanner | null = null;
+
+    constructor(registry?: ScannerRegistry) {
+        this.config = getConfig();
+        this.scannerRegistry = registry || new ScannerRegistry();
+        BrowserService.activeInstances.add(this);
+    }
+
+    /**
+     * Register a scanner with the service.
+     * Call this BEFORE initialize() to add custom scanners.
+     */
+    registerScanner(scanner: IScanner): void {
+        this.scannerRegistry.register(scanner);
+    }
+
+    /**
+     * Get the scanner registry for advanced access
+     */
+    getRegistry(): ScannerRegistry {
+        return this.scannerRegistry;
+    }
+
+    /**
+     * Register default scanners (called automatically during initialize)
+     */
+    private registerDefaultScanners(): void {
+        // Only register if not already registered
+        if (!this.scannerRegistry.getScanner('NetworkSpy')) {
+            this.networkSpy = new NetworkSpy();
+            this.scannerRegistry.register(this.networkSpy);
+        } else {
+            this.networkSpy = this.scannerRegistry.getScanner('NetworkSpy') as NetworkSpy;
+        }
+
+        if (!this.scannerRegistry.getScanner('SecretScanner')) {
+            this.secretScanner = new SecretScanner();
+            this.scannerRegistry.register(this.secretScanner);
+        } else {
+            this.secretScanner = this.scannerRegistry.getScanner('SecretScanner') as SecretScanner;
+        }
+
+        if (!this.scannerRegistry.getScanner('ConsoleMonitor')) {
+            this.consoleMonitor = new ConsoleMonitor();
+            this.scannerRegistry.register(this.consoleMonitor);
+        } else {
+            this.consoleMonitor = this.scannerRegistry.getScanner('ConsoleMonitor') as ConsoleMonitor;
+        }
+
+        if (!this.scannerRegistry.getScanner('SupabaseSecurityScanner')) {
+            this.supabaseScanner = new SupabaseSecurityScanner();
+            this.scannerRegistry.register(this.supabaseScanner);
+        } else {
+            this.supabaseScanner = this.scannerRegistry.getScanner('SupabaseSecurityScanner') as SupabaseSecurityScanner;
+        }
+
+        if (!this.scannerRegistry.getScanner('FrontendVulnerabilityScanner')) {
+            this.vulnScanner = new FrontendVulnerabilityScanner();
+            this.scannerRegistry.register(this.vulnScanner);
+        } else {
+            this.vulnScanner = this.scannerRegistry.getScanner('FrontendVulnerabilityScanner') as FrontendVulnerabilityScanner;
+        }
+    }
+
+    /**
+     * Get the configured User-Agent string
+     */
+    private getUserAgent(): string {
+        return this.config.USER_AGENT || 'ComplianceMonitor/1.0 (HealthCheck)';
+    }
+
+    /**
+     * Human-like delay between actions
+     * Returns a promise that resolves after a random time between 2000ms and 5000ms
+     * This is a PRIVATE enforcement mechanism - all public methods must call this
+     */
+    private async humanDelay(): Promise<number> {
+        const minDelay = this.config.MIN_DELAY_MS || 2000;
+        const maxDelay = this.config.MAX_DELAY_MS || 5000;
+        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+
+        logger.debug(`Human delay: waiting ${delay}ms before next action`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+
+        return delay;
+    }
+
+    /**
+     * Initialize the browser with ZAP proxy and stealth settings
+     * Must be called before any other methods
+     */
+    /**
+     * Initialize the browser with ZAP proxy and stealth settings
+     * Must be called before any other methods
+     */
+    async initialize(options?: { headless?: boolean; useProxy?: boolean }): Promise<void> {
+        if (this.browser) {
+            logger.warn('BrowserService already initialized');
+            return;
+        }
+
+        const headless = options?.headless ?? true;
+        const useProxy = options?.useProxy ?? true;
+        const enableStealth = (getConfig() as any).stealth !== false; // Default true, but check override
+
+        // Register default scanners before initialization
+        this.registerDefaultScanners();
+
+        let userAgent = this.getUserAgent();
+        let viewport = { width: 1920, height: 1080 };
+
+        // STEALTH: Randonize User-Agent and Viewport
+        if (enableStealth) {
+            const userAgents = [
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+            ];
+            userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+
+            // Randomize viewport slightly (+/- 20px)
+            viewport = {
+                width: 1920 + Math.floor(Math.random() * 40) - 20,
+                height: 1080 + Math.floor(Math.random() * 40) - 20
+            };
+        }
+
+        logger.info('Initializing BrowserService...');
+        logger.info(`Headless: ${headless}`);
+        if (useProxy) logger.info(`Proxy: ${this.config.ZAP_PROXY_URL}`);
+        logger.info(`Stealth Mode: ${enableStealth}`);
+        logger.info(`User-Agent: ${userAgent}`);
+        logger.info(`Registered Scanners: ${this.scannerRegistry.getScannerNames().join(', ')}`);
+
+        try {
+            // Launch browser with proxy configuration
+            this.browser = await chromium.launch({
+                headless,
+                args: [
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    ...(enableStealth ? ['--disable-infobars', '--exclude-switches=enable-automation'] : [])
+                ],
+            });
+
+            const contextOptions: any = {
+                userAgent: userAgent,
+                ignoreHTTPSErrors: true,
+                viewport: viewport,
+                locale: 'en-US',
+                timezoneId: 'America/Chicago',
+                javaScriptEnabled: true,
+                hasTouch: false,
+                isMobile: false
+            };
+
+            // Route all traffic through ZAP proxy if enabled
+            if (useProxy) {
+                contextOptions.proxy = {
+                    server: this.config.ZAP_PROXY_URL,
+                };
+            }
+
+            // Create context with proxy, custom UA, and cert bypass
+            this.context = await this.browser.newContext(contextOptions);
+
+            // STEALTH: Inject evasions to delete navigator.webdriver
+            if (enableStealth) {
+                await this.context.addInitScript(() => {
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+
+                    // Mock plugins (simplistic)
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                    });
+
+                    // Mock languages
+                    Object.defineProperty(navigator, 'languages', {
+                        get: () => ['en-US', 'en'],
+                    });
+                });
+            }
+
+            // Dispatch context created event to all scanners
+            await this.scannerRegistry.dispatchContextCreated(this.context);
+
+            // Create the page
+            this.page = await this.context.newPage();
+
+            // Dispatch page created event to all scanners
+            await this.scannerRegistry.dispatchPageCreated(this.page);
+
+            // Capture response headers for security analysis
+            this.page.on('response', (response: Response) => {
+                // Only capture headers from the target domain
+                if (response.url().startsWith(this.config.LIVE_URL)) {
+                    const headers = response.headers();
+                    this.lastResponseHeaders.clear();
+                    Object.entries(headers).forEach(([name, value]) => {
+                        this.lastResponseHeaders.set(name.toLowerCase(), value);
+                    });
+                }
+            });
+
+            this.isInitialized = true;
+            logger.info(`BrowserService initialized with ${this.scannerRegistry.count} scanners`);
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`Failed to initialize browser: ${errMsg}`);
+            await this.close();
+            throw new Error(`BrowserService initialization failed: ${errMsg}`);
+        }
+    }
+
+    /**
+     * Ensure the browser is initialized before any action
+     */
+    private ensureInitialized(): void {
+        if (!this.isInitialized || !this.page) {
+            throw new Error(
+                'BrowserService not initialized. Call initialize() before using any methods.'
+            );
+        }
+    }
+
+    /**
+     * Navigate to a URL with enforced human delay
+     * @param url - The URL to navigate to
+     * @returns Navigation result with status and headers
+     */
+    async goto(url: string): Promise<NavigationResult> {
+        this.ensureInitialized();
+        await this.humanDelay();
+
+        const started = Date.now();
+        logger.debug(`Navigating to: ${url}`);
+
+        try {
+            const response = await this.page!.goto(url, {
+                waitUntil: 'domcontentloaded',
+                timeout: 60000,
+            });
+
+            const finished = Date.now();
+
+            const result: NavigationResult = {
+                url: this.page!.url(),
+                status: response?.status() ?? null,
+                ok: response?.ok() ?? false,
+                headers: new Map(Object.entries(response?.headers() ?? {})),
+                timing: {
+                    started,
+                    finished,
+                    duration: finished - started,
+                },
+            };
+
+            logger.debug(`Navigation complete: ${result.status} in ${result.timing.duration}ms`);
+            return result;
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`Navigation failed: ${errMsg}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Fill an input field with text (with human-like behavior)
+     * @param selector - CSS selector for the input
+     * @param text - Text to type
+     * @returns Interaction result
+     */
+    async fill(selector: string, text: string): Promise<InteractionResult> {
+        this.ensureInitialized();
+        await this.humanDelay();
+
+        try {
+            await this.page!.fill(selector, text);
+            logger.debug(`Filled input '${selector}' with text`);
+            return { success: true, selector, action: 'fill' };
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.warn(`Fill failed for '${selector}': ${errMsg}`);
+            return { success: false, selector, action: 'fill', error: errMsg };
+        }
+    }
+
+    /**
+     * Type into an input field keystroke-by-keystroke (with human-like delays)
+     * @param selector - CSS selector for the input
+     * @param text - Text to type
+     * @param delay - Delay between keystrokes (default 75ms)
+     * @returns Interaction result
+     */
+    async type(selector: string, text: string, delay = 75): Promise<InteractionResult> {
+        this.ensureInitialized();
+        await this.humanDelay();
+
+        try {
+            await this.page!.type(selector, text, { delay });
+            logger.debug(`Typed into '${selector}'`);
+            return { success: true, selector, action: 'type' };
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.warn(`Type failed for '${selector}': ${errMsg}`);
+            return { success: false, selector, action: 'type', error: errMsg };
+        }
+    }
+
+    /**
+     * Click an element (with human-like behavior)
+     * @param selector - CSS selector for the element
+     * @returns Interaction result
+     */
+    async click(selector: string): Promise<InteractionResult> {
+        this.ensureInitialized();
+        await this.humanDelay();
+
+        try {
+            await this.page!.click(selector);
+            logger.debug(`Clicked element: ${selector}`);
+            return { success: true, selector, action: 'click' };
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.warn(`Click failed for '${selector}': ${errMsg}`);
+            return { success: false, selector, action: 'click', error: errMsg };
+        }
+    }
+
+    /**
+     * Wait for a selector to appear on the page
+     * @param selector - CSS selector to wait for
+     * @param timeout - Maximum time to wait (default 30s)
+     * @returns Whether the element was found
+     */
+    async waitForSelector(selector: string, timeout = 30000): Promise<boolean> {
+        this.ensureInitialized();
+
+        try {
+            await this.page!.waitForSelector(selector, { timeout });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Wait for navigation to complete
+     */
+    async waitForNavigation(timeout = 30000): Promise<void> {
+        this.ensureInitialized();
+        await this.page!.waitForLoadState('domcontentloaded', { timeout });
+    }
+
+    /**
+     * Get the current page URL
+     */
+    getCurrentUrl(): string {
+        this.ensureInitialized();
+        return this.page!.url();
+    }
+
+    /**
+     * Get the page title
+     */
+    async getTitle(): Promise<string> {
+        this.ensureInitialized();
+        return this.page!.title();
+    }
+
+    /**
+     * Check if an element exists on the page
+     * @param selector - CSS selector to check
+     */
+    async exists(selector: string): Promise<boolean> {
+        this.ensureInitialized();
+        const element = await this.page!.$(selector);
+        return element !== null;
+    }
+
+    /**
+     * Alias for exists() - backward compatibility
+     * @param selector - CSS selector to check
+     */
+    async elementExists(selector: string): Promise<boolean> {
+        return this.exists(selector);
+    }
+
+    /**
+     * Get text content of an element
+     * @param selector - CSS selector
+     */
+    async getText(selector: string): Promise<string | null> {
+        this.ensureInitialized();
+        try {
+            return await this.page!.textContent(selector);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Take a screenshot
+     * @param name - Screenshot filename (without extension)
+     * @returns Screenshot result with path
+     */
+    async screenshot(name: string): Promise<ScreenshotResult> {
+        this.ensureInitialized();
+
+        const timestamp = Date.now();
+        const filename = `${name}-${timestamp}.png`;
+        const filepath = `${this.config.SCREENSHOTS_DIR}/${filename}`;
+
+        await this.page!.screenshot({ path: filepath, fullPage: true });
+        logger.debug(`Screenshot saved: ${filepath}`);
+
+        return { path: filepath, timestamp };
+    }
+
+    /**
+     * Get the last captured response headers
+     * Used for security header analysis
+     */
+    getLastResponseHeaders(): Map<string, string> {
+        return new Map(this.lastResponseHeaders);
+    }
+
+    /**
+     * Count the number of elements matching a selector
+     * Used for data integrity checks (e.g. counting attachments)
+     */
+    async countElements(selector: string): Promise<number> {
+        this.ensureInitialized();
+        try {
+            // Using $$eval is efficient as it runs within the page context
+            const count = await this.page!.$$eval(selector, (elements) => elements.length);
+            return count;
+        } catch (error) {
+            logger.debug(`Failed to count elements for selector '${selector}': ${error}`);
+            return 0;
+        }
+    }
+
+    /**
+     * Get all links (anchor hrefs) from the current page
+     * Used by CrawlerService for link discovery
+     */
+    async getAllLinks(): Promise<string[]> {
+        this.ensureInitialized();
+
+        try {
+            const links = await this.page!.evaluate(() => {
+                const anchors = document.querySelectorAll('a[href]');
+                return Array.from(anchors)
+                    .map(a => (a as HTMLAnchorElement).href)
+                    .filter(href => href && href.startsWith('http'));
+            });
+            return links;
+        } catch (error) {
+            logger.warn('Failed to get links from page');
+            return [];
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Scanner Result Accessors (Backward Compatibility)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Get collected console errors
+     */
+    getConsoleErrors(): ConsoleError[] {
+        return this.consoleMonitor?.getErrors() ?? [];
+    }
+
+    /**
+     * Clear collected console errors
+     */
+    clearConsoleErrors(): void {
+        this.consoleMonitor?.clear();
+    }
+
+    /**
+     * Get console errors for a specific URL
+     */
+    getConsoleErrorsForUrl(url: string): ConsoleError[] {
+        return this.consoleMonitor?.getErrorsForUrl(url) ?? [];
+    }
+
+    /**
+     * Check if browser is initialized and ready
+     */
+    isReady(): boolean {
+        return this.isInitialized && this.browser !== null && this.page !== null;
+    }
+
+    /**
+     * Get the current Playwright page instance
+     * Warning: Use with caution to maintain encapsulation
+     */
+    getPage(): Page | null {
+        return this.page;
+    }
+
+    /**
+     * Get recorded network incidents
+     */
+    getNetworkIncidents(): NetworkIncident[] {
+        return this.networkSpy?.getIncidents() ?? [];
+    }
+
+    /**
+     * Get detected leaked secrets
+     */
+    getLeakedSecrets(): LeakedSecret[] {
+        return this.secretScanner?.getSecrets() ?? [];
+    }
+
+    /**
+     * Get Supabase security scan results
+     */
+    getSupabaseResults(): SupabaseDetection {
+        return this.supabaseScanner?.getResults() ?? {
+            detected: false,
+            issues: []
+        };
+    }
+
+    /**
+     * Get Supabase security issues only
+     */
+    getSupabaseIssues(): SupabaseSecurityIssue[] {
+        return this.supabaseScanner?.getIssues() ?? [];
+    }
+
+    /**
+     * Run active Supabase security tests (RLS probes, storage checks)
+     */
+    async runSupabaseSecurityTests(): Promise<void> {
+        if (this.page && this.supabaseScanner) {
+            await this.supabaseScanner.runActiveTests(this.page);
+        }
+    }
+
+    /**
+     * Get detected vulnerable frontend libraries
+     */
+    getVulnerableLibraries(): VulnerableLibrary[] {
+        return this.vulnScanner?.getVulnerableLibraries() ?? [];
+    }
+
+    /**
+     * Scan page globals for library versions (call after page load)
+     */
+    async scanPageLibraries(): Promise<void> {
+        if (this.page && this.vulnScanner) {
+            await this.vulnScanner.scanPageGlobals(this.page);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Parallel Page Management (for CrawlerService)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Add cookies to the browser context
+     * Used for session injection / auth bypass
+     */
+    async addCookies(cookies: Array<{
+        name: string;
+        value: string;
+        url?: string;
+        domain?: string;
+        path?: string;
+        expires?: number;
+        httpOnly?: boolean;
+        secure?: boolean;
+        sameSite?: "Strict" | "Lax" | "None";
+    }>): Promise<void> {
+        this.ensureInitialized();
+        if (this.context) {
+            await this.context.addCookies(cookies);
+            logger.debug(`Added ${cookies.length} cookies to context`);
+        }
+    }
+
+    /**
+     * Get the browser context for creating new pages
+     * Used by CrawlerService for parallel page execution
+     */
+    getContext(): BrowserContext | null {
+        return this.context;
+    }
+
+    /**
+     * Create a new isolated page (tab) for parallel execution
+     * Each page is independent and can be used concurrently
+     * @returns New Page instance
+     */
+    async createNewPage(): Promise<Page> {
+        this.ensureInitialized();
+
+        if (!this.context) {
+            throw new Error('Browser context not available');
+        }
+
+        const newPage = await this.context.newPage();
+
+        // Dispatch page created event to all scanners for this new page
+        await this.scannerRegistry.dispatchPageCreated(newPage);
+
+        logger.debug('Created new page for parallel execution');
+        return newPage;
+    }
+
+    /**
+     * Close a specific page
+     * @param page - Page instance to close
+     */
+    async closePage(page: Page): Promise<void> {
+        try {
+            await page.close();
+            logger.debug('Closed parallel page');
+        } catch (error) {
+            logger.debug(`Failed to close page: ${error}`);
+        }
+    }
+
+    /**
+     * Get the minimum delay value for human-like behavior
+     */
+    getMinDelay(): number {
+        return this.config.MIN_DELAY_MS || 2000;
+    }
+
+    /**
+     * Get the maximum delay value for human-like behavior
+     */
+    getMaxDelay(): number {
+        return this.config.MAX_DELAY_MS || 5000;
+    }
+
+    /**
+     * Properly shut down the browser context and browser
+     * Always call this when done to prevent resource leaks
+     */
+    async close(): Promise<void> {
+        logger.info('Closing BrowserService...');
+
+        try {
+            // Dispatch close event to all scanners
+            await this.scannerRegistry.dispatchClose();
+
+            if (this.page) {
+                await this.page.close().catch(() => { });
+                this.page = null;
+            }
+
+            if (this.context) {
+                await this.context.close().catch(() => { });
+                this.context = null;
+            }
+
+            if (this.browser) {
+                await this.browser.close().catch(() => { });
+                this.browser = null;
+            }
+
+            this.isInitialized = false;
+            this.lastResponseHeaders.clear();
+
+            BrowserService.activeInstances.delete(this);
+
+            logger.info('BrowserService closed successfully');
+        } catch (error) {
+            const errMsg = error instanceof Error ? error.message : String(error);
+            logger.error(`Error during browser cleanup: ${errMsg}`);
+        }
+    }
+
+    /**
+     * Static helper to close all active browser sessions
+     * Essential for graceful shutdown handling
+     */
+    static async closeAll(): Promise<void> {
+        const instances = Array.from(this.activeInstances);
+        if (instances.length === 0) return;
+
+        logger.info(`Shutting down ${instances.length} active browser session(s)...`);
+        await Promise.all(instances.map(instance => instance.close()));
+    }
+}
+
+export default BrowserService;

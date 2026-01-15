@@ -1,0 +1,20 @@
+[
+    {
+        "ruleId": "color-contrast",
+        "selector": ".nav-bar",
+        "reason": "Brand colors required by marketing",
+        "expires": "2026-12-31"
+    },
+    {
+        "ruleId": "image-alt",
+        "selector": "img.decorative",
+        "reason": "Purely decorative image, hidden from screen readers",
+        "expires": "2026-06-01"
+    },
+    {
+        "ruleId": "10020",
+        "selector": "X-Frame-Options Header Not Set",
+        "reason": "Intentionally allowed for internal embedding",
+        "expires": "2027-01-01"
+    }
+]
