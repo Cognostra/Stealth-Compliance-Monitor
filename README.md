@@ -1,98 +1,330 @@
-Stealth Compliance Monitor
+# Stealth Compliance Monitor
 
-A production-grade automated auditing pipeline designed to verify the security, performance, and integrity of single-page applications (SPAs). Originally engineered to stress-test loadout.app in a live environment without disrupting user traffic.
+Automated security, performance, and accessibility auditing for web applications. Runs headless browser sessions through security proxies to detect vulnerabilities, measure Core Web Vitals, and verify WCAG compliance without disrupting production traffic.
 
-This system integrates browser automation, security proxies, and performance profiling into a unified "Compliance Runner" that operates as a specialized agent.
+## Table of Contents
 
-Core Objectives
-Manual testing is insufficient for data-heavy applications with complex search logic and extensive assets. This tool automates the verification of:
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Scan Profiles](#scan-profiles)
+- [Fleet Mode](#fleet-mode)
+- [Enterprise Integration](#enterprise-integration)
+- [Reports](#reports)
+- [Architecture](#architecture)
+- [Scripts](#scripts)
+- [License](#license)
 
-Security Posture: detecting missing headers, sensitive data leaks, and insecure cookies.
+---
 
-System Resilience: ensuring the application handles poor network conditions gracefully.
+## Features
 
-Data Integrity: verifying that assets (images/scripts) load correctly and search algorithms return valid results.
+### Security Scanning
+- **Passive Security Analysis** - Routes traffic through OWASP ZAP proxy to detect vulnerabilities without active exploitation
+- **Secret Detection** - Scans JavaScript sources for leaked API keys, tokens, and credentials
+- **PII/DLP Scanning** - Detects exposed SSNs, credit card numbers, and phone numbers
+- **Supabase Security** - Checks for service_role key leaks, RLS bypass, and storage bucket exposure
+- **Vulnerable Dependencies** - Identifies outdated JavaScript libraries with known CVEs
+- **Black-Box Pentesting** - Safe IDOR, XSS, SQLi, and auth bypass probes (deep profile only)
+- **Cookie Analysis** - Validates Secure, HttpOnly, and SameSite attributes
 
-Performance Metrics: tracking Core Web Vitals against defined budgets.
+### Performance Auditing
+- **Lighthouse Integration** - Captures Performance, Accessibility, SEO, and Best Practices scores
+- **Core Web Vitals** - Tracks LCP, CLS, TBT, FCP, Speed Index, and TTI
+- **Network Throttling** - Simulates Slow 3G conditions to test application resilience
+- **Asset Validation** - Detects broken images, oversized resources, and 404 errors
 
-DLP & Compliance: Scanning for PII exposure (SSN, Credit Cards) and managing false positives via baselines.
+### Accessibility Compliance
+- **axe-core Integration** - WCAG 2.1 A/AA and Section 508 violation detection
+- **Impact Severity** - Categorizes issues as critical, serious, moderate, or minor
+- **Playwright Locators** - Copy-paste selectors for immediate debugging
 
-System Capabilities
-Passive Security Analysis: Routes traffic through a local OWASP ZAP proxy in Safe Mode to identify vulnerabilities without active exploitation.
+### Visual Regression
+- **Pixel-Level Comparison** - Detects layout regressions against baseline screenshots
+- **Configurable Threshold** - Adjust sensitivity for expected UI changes
+- **Diff Generation** - Visual diff images highlighting changed regions
 
-Mobile & Network Emulation: Simulates high-end mobile devices (iPhone 15 Pro user agent/viewport) and throttles network speeds to "Slow 3G" to test application robustness.
+### Reporting and Alerts
+- **Interactive HTML Dashboard** - Filterable remediation grid with severity badges
+- **Historical Trends** - Track compliance scores across runs
+- **AI Remediation** - Optional LLM-generated code fixes for detected issues
+- **Webhook Notifications** - Slack, Microsoft Teams, Discord, and Zapier integration
+- **SIEM Forwarding** - ECS/OCSF structured logs for Splunk, Datadog, and Elastic
 
-Programmatic Performance Auditing: Executes Google Lighthouse runs to capture and log LCP, CLS, and TBT metrics.
+### Reliability
+- **Crash Resilience** - Write-Ahead Logging (WAL) ensures partial recovery on interruption
+- **Stealth Mode** - Bot detection bypass via User-Agent randomization and WebDriver masking
+- **Human-Like Behavior** - Configurable delays between actions
 
-Visual Regression Testing: Compares current UI states against baseline screenshots using pixel-level analysis to detect layout regressions.
+---
 
-Accessibility Compliance: integrated axe-core scanning to audit WCAG and ADA compliance.
+## Requirements
 
-Functional Verification: actively types into search inputs, filters results, and validates data accuracy against expected outputs.
+- Node.js v18 or higher
+- Docker (for OWASP ZAP proxy)
+- Git
 
-Asset Validation: Scans the DOM for broken images (404s) and identifies unoptimized resources exceeding file-size budgets.
+---
 
-AI Remediation: Automatically generates code fixes for detected vulnerabilities using LLMs.
+## Installation
 
-Historical Trends: Tracks compliance scores over time to visualize improvement or regression.
-Enterprise Notifications: Webhook integration for Slack, Microsoft Teams, Discord, and Zapier.
-SIEM Log Forwarding: Structured JSON logs (ECS/OCSF) for ingestion into Splunk, Datadog, or Elastic.
-Stealth Evasion: Advanced bot-detection bypass techniques (User-Agent randomization, WebDriver masking).
-Crash Resilience: Write-Ahead Logging (WAL) ensures data persistence and partial recovery even on process interruption.
-
-Technical Architecture
-Runtime: Node.js, TypeScript
-
-Automation: Playwright (Chromium)
-
-Security: OWASP ZAP (Dockerized), PiiScanner
-
-Analysis: Lighthouse, Axe-Playwright, Pixelmatch, OpenAI (Optional)
-
-Logging: Winston (Structured JSON & Console), SiemLogger (Structured Events)
-Persistence: JSON Lines (WAL) for session recovery
-
-Quick Start
-Prerequisites
-Node.js (v18+)
-
-Docker (required for the ZAP proxy container)
-
-Installation
-Clone the repository:
-
-Bash
-git clone <https://github.com/yourusername/stealth-compliance-monitor.git>
+```bash
+# Clone the repository
+git clone https://github.com/yourorg/stealth-compliance-monitor.git
 cd stealth-compliance-monitor
-Install dependencies:
 
-Bash
+# Install dependencies
 npm install
+
+# Install Playwright browsers
 npx playwright install chromium
-Configure environment:
 
-Bash
+# Copy environment template
 cp .env.example .env
-Edit .env to define your target LIVE_URL and test credentials.
+```
 
-Start the Security Proxy:
+---
 
-Bash
+## Configuration
+
+Edit `.env` with your target and credentials:
+
+```bash
+# Required
+LIVE_URL=https://your-app.com
+TEST_EMAIL=test@example.com
+TEST_PASSWORD=your_password
+
+# Security Proxy (default: http://localhost:8080)
+ZAP_PROXY_URL=http://localhost:8080
+
+# Human-like delays (milliseconds)
+MIN_DELAY_MS=2000
+MAX_DELAY_MS=5000
+
+# AI Remediation (optional)
+ENABLE_AI=false
+OPENAI_API_KEY=sk-...
+
+# Webhooks (optional)
+WEBHOOK_URL=https://hooks.slack.com/services/...
+WEBHOOK_SECRET=your_hmac_secret
+WEBHOOK_EVENTS=critical
+
+# SIEM Integration (optional)
+SIEM_ENABLED=false
+SIEM_WEBHOOK_URL=https://http-intake.logs.datadoghq.com/...
+SIEM_LOG_PATH=./logs/security-events.log
+```
+
+---
+
+## Usage
+
+### Start the Security Proxy
+
+```bash
 docker-compose up -d zaproxy
-Execution
-Run the full audit suite:
+```
 
-Bash
+### Run a Scan
+
+```bash
+# Development mode (TypeScript)
+npm run dev
+
+# Production mode (compiled)
+npm run build
 npm start
-The system will initialize the headless browser, authenticate, execute the audit loop, and generate a comprehensive report in reports/AUDIT_SUMMARY.md.
 
-Enterprise Integration
-To enable Slack/Teams notifications, add `WEBHOOK_URL` to your `.env` file.
-To enable Splunk/Datadog logging, set `SIEM_ENABLED=true` and `SIEM_WEBHOOK_URL`.
-All security events are logged to `logs/security-events.log` for ingestion.
+# With specific profile
+npx ts-node src/index.ts --profile=deep
+```
 
-Graceful Shutdown
-If the scan is interrupted (Ctrl+C), the monitor will automatically hydrate current progress from the Write-Ahead Log (WAL) and generate a partial report.
-Disclaimer
-This software is designed strictly for authorized testing and quality assurance. Do not execute this tool against targets for which you do not hold explicit permission or ownership.
-"# Stealth-Compliance-Monitor" 
+### Stop the Proxy
+
+```bash
+docker-compose down
+```
+
+---
+
+## Scan Profiles
+
+| Profile | Pages | Concurrency | Active Security | Use Case |
+|---------|-------|-------------|-----------------|----------|
+| `smoke` | 1 | 1 | No | Quick health check |
+| `standard` | 15 | 3 | No | Regular CI/CD scans |
+| `deep` | 50 | 5 | Yes | Full security assessment |
+
+```bash
+# Examples
+npx ts-node src/index.ts --profile=smoke
+npx ts-node src/index.ts --profile=standard
+npx ts-node src/index.ts --profile=deep
+```
+
+The `deep` profile enables black-box penetration testing probes (IDOR, XSS, SQLi detection).
+
+---
+
+## Fleet Mode
+
+Scan multiple sites in a single run by providing a JSON file or comma-separated URLs.
+
+### Option 1: JSON File
+
+Create `targets.json`:
+
+```json
+{
+  "targets": [
+    "https://app1.example.com",
+    "https://app2.example.com",
+    "https://app3.example.com"
+  ]
+}
+```
+
+Set in `.env`:
+
+```bash
+LIVE_URL=targets.json
+```
+
+### Option 2: Comma-Separated
+
+```bash
+LIVE_URL=https://app1.example.com,https://app2.example.com
+```
+
+Fleet mode generates a unified dashboard comparing all sites.
+
+---
+
+## Enterprise Integration
+
+### Webhook Notifications
+
+Sends alerts to Slack, Teams, Discord, or any webhook endpoint.
+
+```bash
+WEBHOOK_URL=https://hooks.slack.com/services/T00/B00/xxx
+WEBHOOK_SECRET=optional_hmac_secret
+WEBHOOK_EVENTS=critical  # or 'all'
+```
+
+### SIEM Log Forwarding
+
+Structured JSON logs compatible with Splunk, Datadog, and Elastic.
+
+```bash
+SIEM_ENABLED=true
+SIEM_WEBHOOK_URL=https://http-intake.logs.datadoghq.com/v1/input/xxx
+SIEM_LOG_PATH=./logs/security-events.log
+```
+
+### Auth Token Bypass
+
+Skip login flows by injecting session cookies directly:
+
+```bash
+AUTH_COOKIE_NAME=session_token
+AUTH_TOKEN_VALUE=your_valid_session_token
+```
+
+---
+
+## Reports
+
+Reports are generated in the `reports/` directory:
+
+| File | Description |
+|------|-------------|
+| `{domain}-audit-report.html` | Interactive HTML dashboard |
+| `fleet-dashboard.html` | Multi-site comparison (fleet mode) |
+| `history.json` | Historical trend data |
+| `latest.json` | Raw JSON findings |
+
+### Opening Reports
+
+```bash
+# Open the HTML dashboard in your browser
+start reports/loadout-audit-report.html  # Windows
+open reports/loadout-audit-report.html   # macOS
+```
+
+---
+
+## Architecture
+
+```
+src/
+  index.ts              # Entry point and orchestration
+  config/               # Environment and profile configuration
+  core/                 # ComplianceRunner, UserFlowRunner
+  services/             # All scanning and reporting services
+    AuthService.ts      # Authentication handling
+    BrowserService.ts   # Playwright wrapper with stealth
+    CrawlerService.ts   # Page discovery and validation
+    LighthouseService.ts
+    ZapService.ts
+    A11yScanner.ts
+    SecretScanner.ts
+    PiiScanner.ts
+    SecurityAssessment.ts
+    VisualSentinel.ts
+    HtmlReportGenerator.ts
+    WebhookService.ts
+    SiemLogger.ts
+    ...
+  types/                # TypeScript definitions
+  utils/                # Logger, throttle utilities
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system diagrams.
+
+---
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Run with ts-node (development) |
+| `npm run build` | Compile TypeScript to dist/ |
+| `npm start` | Run compiled JavaScript |
+| `npm run audit` | Run with --full-audit flag |
+| `npm run lint` | ESLint check |
+| `npm run clean` | Remove dist/ directory |
+
+### Cleanup Script
+
+Prepare for public release by removing sensitive data and git history:
+
+```bash
+# Preview what will be deleted
+.\scripts\nuke-and-reinit.ps1 -DryRun
+
+# Execute cleanup
+.\scripts\nuke-and-reinit.ps1
+```
+
+---
+
+## Graceful Shutdown
+
+If interrupted (Ctrl+C), the monitor hydrates progress from the Write-Ahead Log and generates a partial report automatically.
+
+---
+
+## License
+
+MIT
+
+---
+
+## Disclaimer
+
+This software is for authorized testing only. Do not run against targets without explicit permission.
