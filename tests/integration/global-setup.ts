@@ -15,6 +15,24 @@ import * as dotenv from 'dotenv';
 // Load environment variables
 dotenv.config();
 
+function getRequestedProjects(): string[] | null {
+    const projects: string[] = [];
+    const args = process.argv;
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+        if (arg.startsWith('--project=')) {
+            const value = arg.split('=')[1];
+            if (value) projects.push(value);
+        } else if (arg === '--project' && args[i + 1]) {
+            projects.push(args[i + 1]);
+            i++;
+        }
+    }
+
+    return projects.length > 0 ? projects : null;
+}
+
 async function globalSetup(config: FullConfig): Promise<void> {
     console.log('\n🚀 Running global setup for integration tests...\n');
 
@@ -54,9 +72,13 @@ async function globalSetup(config: FullConfig): Promise<void> {
 
     // Check if ZAP is needed and available
     const zapUrl = process.env.ZAP_PROXY_URL || 'http://localhost:8080';
-    const hasZapTests = config.projects.some(p => p.name === 'e2e-with-zap');
+    const requestedProjects = getRequestedProjects();
+    const hasZapProject = config.projects.some(p => p.name === 'e2e-with-zap');
+    const shouldRequireZap = requestedProjects
+        ? requestedProjects.includes('e2e-with-zap')
+        : hasZapProject;
 
-    if (hasZapTests) {
+    if (shouldRequireZap) {
         console.log(`🔒 Checking ZAP availability at ${zapUrl}...`);
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 5000);
