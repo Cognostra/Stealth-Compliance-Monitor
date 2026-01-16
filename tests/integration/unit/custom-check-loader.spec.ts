@@ -7,6 +7,7 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
 import { CustomCheckLoader, CustomCheckContext, CustomCheckViolation } from '../../../src/core/CustomCheckLoader.js';
 import { Page } from 'playwright';
 
@@ -19,6 +20,8 @@ const mockLogger = {
 };
 
 // Test directory for temporary checks
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const TEST_CHECKS_DIR = path.resolve(__dirname, 'temp_checks');
 
 test.describe('Custom Check Loader', () => {
