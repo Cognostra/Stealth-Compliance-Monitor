@@ -4,12 +4,13 @@
  */
 
 import { Logger } from '../types/index.js';
+import { randomInt } from './random.js';
 
 /**
  * Generate a random delay between min and max milliseconds
  */
 export function randomDelay(minMs: number, maxMs: number): number {
-    return Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
+    return randomInt(minMs, maxMs);
 }
 
 /**

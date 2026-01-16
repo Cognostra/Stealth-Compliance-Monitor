@@ -12,6 +12,7 @@ import { getConfig, EnvConfig } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { ScannerRegistry, IScanner } from '../core/ScannerRegistry.js';
 import { retryPlaywright } from '../utils/retry.js';
+import { random, randomInt, isDeterministic } from '../utils/random.js';
 
 // Default scanners (lazy-loaded for backward compatibility)
 import { NetworkSpy, NetworkIncident } from './NetworkSpy.js';
@@ -165,7 +166,7 @@ export class BrowserService {
     private async humanDelay(): Promise<number> {
         const minDelay = this.config.MIN_DELAY_MS || 2000;
         const maxDelay = this.config.MAX_DELAY_MS || 5000;
-        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        const delay = randomInt(minDelay, maxDelay);
 
         logger.debug(`Human delay: waiting ${delay}ms before next action`);
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -237,13 +238,15 @@ export class BrowserService {
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
             ];
-            userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+            userAgent = userAgents[Math.floor(random() * userAgents.length)];
 
             // Randomize viewport slightly (+/- 20px)
-            viewport = {
-                width: 1920 + Math.floor(Math.random() * 40) - 20,
-                height: 1080 + Math.floor(Math.random() * 40) - 20
-            };
+            if (!isDeterministic()) {
+                viewport = {
+                    width: 1920 + randomInt(-20, 20),
+                    height: 1080 + randomInt(-20, 20)
+                };
+            }
         }
 
         logger.info('Initializing BrowserService...');

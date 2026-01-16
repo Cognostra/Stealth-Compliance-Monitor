@@ -33,6 +33,7 @@ import { PersistenceService } from './PersistenceService.js';
 import { EnvConfig } from '../config/env.js';
 import { ComplianceConfig } from '../config/compliance.config.js';
 import { logger } from '../utils/logger.js';
+import { randomInt } from '../utils/random.js';
 
 /**
  * Content validation result
@@ -202,7 +203,11 @@ export class CrawlerService {
 
     constructor(browserService: BrowserService, config: ComplianceConfig, linkConfig?: Partial<LinkConfig>) {
         this.browserService = browserService;
-        this.visualSentinel = new VisualSentinel();
+        this.visualSentinel = new VisualSentinel({
+            diffThreshold: config.visualDiffThreshold,
+            baselineMaxAgeDays: config.visualBaselineMaxAgeDays,
+            autoApproveBaseline: config.visualBaselineAutoApprove
+        });
         this.assetValidator = new AssetValidator();
         this.linkChecker = new LinkChecker();
         this.seoValidator = new SEOValidator();
@@ -234,7 +239,7 @@ export class CrawlerService {
     private async humanDelay(): Promise<void> {
         const minDelay = this.browserService.getMinDelay();
         const maxDelay = this.browserService.getMaxDelay();
-        const delay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+        const delay = randomInt(minDelay, maxDelay);
         await new Promise(resolve => setTimeout(resolve, delay));
     }
 

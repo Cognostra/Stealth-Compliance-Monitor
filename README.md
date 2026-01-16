@@ -179,6 +179,20 @@ npx ts-node src/index.ts --profile=deep
 docker-compose down
 ```
 
+## Quick Start (Minimal Setup)
+
+If you just want a fast smoke scan:
+
+1. Set required env vars in .env:
+  - LIVE_URL, TEST_EMAIL, TEST_PASSWORD
+2. Install dependencies:
+  - npm install
+  - npx playwright install chromium
+3. Run smoke profile:
+  - npm start -- --profile=smoke
+
+> ZAP is optional for passive scans. If ZAP is not running, ZAP-specific tests are skipped.
+
 ---
 
 ## Scan Profiles
@@ -215,6 +229,29 @@ The `deep-active` profile and `--active` flag enable **ZAP Active Scanning**:
 > - **Only use with explicit authorization on systems you own**
 
 Active scan results are separated from passive findings in the report.
+
+#### Safety Guardrails (Required)
+
+Active scans only run when **both** of the following are configured:
+
+```bash
+ACTIVE_SCAN_ALLOWED=true
+ACTIVE_SCAN_ALLOWLIST=example.com
+```
+
+This prevents accidental scans on unauthorized targets.
+
+## Capabilities Matrix
+
+| Capability | Smoke | Standard | Deep | Deep-Active |
+|---|---:|---:|---:|---:|
+| Lighthouse (Perf/A11y) | ✅ | ✅ | ✅ | ✅ |
+| Crawler + Content Validation | ✅ | ✅ | ✅ | ✅ |
+| Accessibility (axe-core) | ✅ | ✅ | ✅ | ✅ |
+| Passive ZAP Alerts | ✅ | ✅ | ✅ | ✅ |
+| Custom Checks | ✅ | ✅ | ✅ | ✅ |
+| Black‑Box Security Probes | ❌ | ❌ | ✅ | ✅ |
+| Active ZAP Scanning | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -283,6 +320,24 @@ When `DEBUG_PAUSE_ON_FAILURE=true`, the scanner pauses after errors allowing you
 - Check DevTools console
 - Manually navigate to debug
 - Press Enter in the terminal to continue
+
+---
+
+## Deterministic Mode (CI Stability)
+
+Enable stable randomness to reduce flaky diffs:
+
+```bash
+DETERMINISTIC_MODE=true
+DETERMINISTIC_SEED=42
+```
+
+## Troubleshooting
+
+- **ZAP not available**: ZAP tests are skipped when proxy is down. Start with:
+  - docker-compose up -d zaproxy
+- **Playwright browser deps**: On CI, use `npx playwright install chromium --with-deps`.
+- **Baseline drift**: Set `VISUAL_BASELINE_MAX_AGE_DAYS` and either refresh manually or enable `VISUAL_BASELINE_AUTO_APPROVE`.
 
 ---
 

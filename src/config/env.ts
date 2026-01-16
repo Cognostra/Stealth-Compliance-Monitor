@@ -5,6 +5,7 @@
 
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import { initDeterministic } from '../utils/random.js';
 
 // Load .env file from project root
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -111,6 +112,24 @@ export interface EnvConfig {
     BRAND_FOOTER_TEXT?: string;
     /** Report title prefix (appears before "Compliance Report") */
     BRAND_REPORT_TITLE?: string;
+    /** Enable deterministic mode (stable randomness) */
+    DETERMINISTIC_MODE: boolean;
+    /** Seed for deterministic mode */
+    DETERMINISTIC_SEED: number;
+    /** Allow active ZAP scanning */
+    ACTIVE_SCAN_ALLOWED: boolean;
+    /** Allowlist of targets for active scanning */
+    ACTIVE_SCAN_ALLOWLIST: string[];
+    /** Visual regression diff threshold (0-1) */
+    VISUAL_DIFF_THRESHOLD: number;
+    /** Baseline max age (days) before approval required */
+    VISUAL_BASELINE_MAX_AGE_DAYS: number;
+    /** Auto-approve baseline refresh when expired */
+    VISUAL_BASELINE_AUTO_APPROVE: boolean;
+    /** Enable log redaction */
+    REDACTION_ENABLED: boolean;
+    /** Optional run tag for reports/logs */
+    RUN_TAG?: string;
 }
 
 /**
@@ -166,6 +185,28 @@ function getNumber(key: string, defaultValue: number): number {
         throw new Error(
             `[CONFIG ERROR] Invalid numeric value for ${key}: "${value}"\n` +
             `Expected a valid integer.`
+        );
+    }
+
+    return parsed;
+}
+
+/**
+ * Get a numeric environment variable (float)
+ */
+function getFloat(key: string, defaultValue: number): number {
+    const value = process.env[key];
+
+    if (value === undefined || value === null || value.trim() === '') {
+        return defaultValue;
+    }
+
+    const parsed = parseFloat(value.trim());
+
+    if (isNaN(parsed)) {
+        throw new Error(
+            `[CONFIG ERROR] Invalid numeric value for ${key}: "${value}"\n` +
+            `Expected a valid number.`
         );
     }
 
@@ -268,7 +309,23 @@ export function loadEnvConfig(): EnvConfig {
         BRAND_CUSTOM_CSS_URL: getOptional('BRAND_CUSTOM_CSS_URL', ''),
         BRAND_FOOTER_TEXT: getOptional('BRAND_FOOTER_TEXT', ''),
         BRAND_REPORT_TITLE: getOptional('BRAND_REPORT_TITLE', ''),
+        DETERMINISTIC_MODE: getOptional('DETERMINISTIC_MODE', 'false').toLowerCase() === 'true',
+        DETERMINISTIC_SEED: getNumber('DETERMINISTIC_SEED', 42),
+        ACTIVE_SCAN_ALLOWED: getOptional('ACTIVE_SCAN_ALLOWED', 'false').toLowerCase() === 'true',
+        ACTIVE_SCAN_ALLOWLIST: getOptional('ACTIVE_SCAN_ALLOWLIST', '')
+            .split(',')
+            .map(v => v.trim())
+            .filter(v => v.length > 0),
+        VISUAL_DIFF_THRESHOLD: getFloat('VISUAL_DIFF_THRESHOLD', 0.05),
+        VISUAL_BASELINE_MAX_AGE_DAYS: getNumber('VISUAL_BASELINE_MAX_AGE_DAYS', 30),
+        VISUAL_BASELINE_AUTO_APPROVE: getOptional('VISUAL_BASELINE_AUTO_APPROVE', 'false').toLowerCase() === 'true',
+        REDACTION_ENABLED: getOptional('REDACTION_ENABLED', 'true').toLowerCase() === 'true',
+        RUN_TAG: getOptional('RUN_TAG', '')
     };
+
+    if (config.DETERMINISTIC_MODE) {
+        initDeterministic(config.DETERMINISTIC_SEED);
+    }
 
     // Validate delay configuration
     if (config.MIN_DELAY_MS < 1000) {

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { BrowserService } from './BrowserService.js';
 import { AuthService } from './AuthService.js';
 import { AuditService } from './AuditService.js';
@@ -41,6 +42,8 @@ export class ComplianceRunner {
 
     async run(targetUrl: string): Promise<FleetSiteResult> {
         const startTime = Date.now();
+        const runId = randomUUID();
+        const gitSha = process.env.GITHUB_SHA || process.env.GIT_SHA || '';
         let finalStatus: 'pass' | 'fail' | 'warning' = 'fail';
         let healthScore = 0;
         let htmlReportPath = '';
@@ -59,7 +62,12 @@ export class ComplianceRunner {
         await persistenceService.init(targetUrl);
 
         // Step 1: Active ZAP Scanning (Global, run once)
-        if (this.config.activeScanning) {
+        const allowlist = this.config.activeScanAllowlist || [];
+        const activeScanAllowed = this.config.activeScanning && (this.config.activeScanAllowed || false) && (
+            allowlist.length === 0 || allowlist.some(allowed => targetUrl.includes(allowed) || allowed === targetUrl)
+        );
+
+        if (activeScanAllowed) {
             logSection('Active ZAP Scanning (Spider + Attack)');
             const activeScanner = new ZapActiveScanner(this.config, logger);
             try {
@@ -81,6 +89,8 @@ export class ComplianceRunner {
             } finally {
                 await activeScanner.cleanup();
             }
+        } else if (this.config.activeScanning) {
+            logger.warn('Active scanning requested but not allowed for this target. Skipping active scan.');
         }
 
         // Step 1.5: API Endpoint Testing (Global, run once)
@@ -244,7 +254,11 @@ export class ComplianceRunner {
                 generatedAt: new Date().toISOString(),
                 targetUrl: targetUrl,
                 duration: Date.now() - startTime,
-                activeScanning: this.config.activeScanning || false,
+                activeScanning: activeScanAllowed,
+                runId,
+                profile: this.config.name,
+                gitSha,
+                runTag: this.config.runTag,
             },
             authentication: { success: true, duration: 0 },
             crawl: primaryResult.crawlResult, // Primary crawl
@@ -316,6 +330,18 @@ export class ComplianceRunner {
                 vulnIntelInKev: vulnIntelResults?.summary.inKev || 0,
                 vulnIntelAvgRisk: vulnIntelResults?.summary.averageRiskScore || 0,
             },
+            coverage: [
+                { name: 'Lighthouse', status: primaryResult.auditResult?.lighthouse ? 'ran' : 'failed' },
+                { name: 'Crawler', status: primaryResult.crawlResult ? 'ran' : 'failed' },
+                { name: 'ZAP Passive', status: this.config.ZAP_PROXY_URL ? 'ran' : 'skipped', detail: this.config.ZAP_PROXY_URL ? undefined : 'Proxy disabled' },
+                { name: 'ZAP Active', status: activeScanAllowed ? 'ran' : 'skipped', detail: activeScanAllowed ? undefined : 'Not allowed or disabled' },
+                { name: 'API Testing', status: this.config.enableApiTesting ? (apiTestResult ? 'ran' : 'failed') : 'skipped' },
+                { name: 'Vulnerability Intel', status: this.config.enableVulnIntel !== false ? (vulnIntelResults ? 'ran' : 'failed') : 'skipped' },
+                { name: 'Custom Checks', status: this.config.enableCustomChecks ? 'ran' : 'skipped' },
+                { name: 'Visual Regression', status: primaryResult.crawlResult?.pageResults?.some(p => p.visualResult) ? 'ran' : 'skipped' },
+                { name: 'Supabase Scanner', status: (primaryResult.supabaseIssues?.length ?? 0) >= 0 ? 'ran' : 'skipped' },
+                { name: 'Secret Scanner', status: (primaryResult.leakedSecrets?.length ?? 0) >= 0 ? 'ran' : 'skipped' }
+            ]
         };
 
         // Build branding config from environment

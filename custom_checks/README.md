@@ -7,6 +7,7 @@ These checks are automatically loaded and executed during the compliance scan.
 
 1. **Create a file** in this directory (e.g., `cookie-banner.ts`).
 2. **Export a function** named `check` (or default export).
+3. **(Recommended)** Export a `meta` object to declare API version and ownership.
 3. **Use Playwright** to inspect the page.
 4. **Return violations** if found.
 
@@ -14,7 +15,14 @@ These checks are automatically loaded and executed during the compliance scan.
 
 ```typescript
 import { Page } from 'playwright';
-import { CustomCheckContext, CustomCheckViolation } from '../src/core/CustomCheckLoader';
+import { CustomCheckContext, CustomCheckViolation, CustomCheckMeta } from '../src/core/CustomCheckLoader.js';
+
+export const meta: CustomCheckMeta = {
+    apiVersion: '1.0',
+    name: 'cookie-banner',
+    description: 'Ensures a consent banner is present',
+    owner: 'compliance-team'
+};
 
 export async function check(page: Page, context: CustomCheckContext): Promise<CustomCheckViolation[]> {
     const violations: CustomCheckViolation[] = [];
@@ -36,6 +44,17 @@ export async function check(page: Page, context: CustomCheckContext): Promise<Cu
 ```
 
 ## Types
+
+### CustomCheckMeta
+
+```typescript
+interface CustomCheckMeta {
+    apiVersion: '1.0';
+    name: string;
+    description?: string;
+    owner?: string;
+}
+```
 
 ### CustomCheckViolation
 

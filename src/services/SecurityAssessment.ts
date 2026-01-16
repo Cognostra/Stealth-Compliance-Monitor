@@ -21,6 +21,7 @@
 
 import { Page } from 'playwright';
 import { logger } from '../utils/logger.js';
+import { randomInt } from '../utils/random.js';
 import { baselineService } from './BaselineService.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -982,7 +983,7 @@ export class SecurityAssessment {
 
     private async safeDelay(): Promise<void> {
         // Rate limit our own testing to avoid triggering WAF
-        const delay = 1000 + Math.random() * 2000; // 1-3 seconds
+        const delay = randomInt(1000, 3000); // 1-3 seconds
         await new Promise(r => setTimeout(r, delay));
     }
 

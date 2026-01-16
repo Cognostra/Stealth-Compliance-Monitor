@@ -21,6 +21,11 @@ export interface ReportData {
         generatedAt: string;
         targetUrl: string;
         duration: number;
+        runId?: string;
+        profile?: string;
+        gitSha?: string;
+        runTag?: string;
+        activeScanning?: boolean;
     };
     authentication: {
         success: boolean;
@@ -79,6 +84,11 @@ export interface ReportData {
         mediumRiskAlerts: number;
         passedAudit: boolean;
     };
+    coverage?: Array<{
+        name: string;
+        status: 'ran' | 'skipped' | 'failed';
+        detail?: string;
+    }>;
 }
 
 export class ReportGenerator {
@@ -148,6 +158,17 @@ export class ReportGenerator {
         md += '\n---\n\n';
 
         // 2. Data Integrity Section (New)
+        // 1.5 Coverage Section
+        if (data.coverage && data.coverage.length > 0) {
+            md += '## ✅ Scan Coverage\n\n';
+            md += '| Component | Status | Details |\n';
+            md += '| :--- | :--- | :--- |\n';
+            data.coverage.forEach(item => {
+                const statusIcon = item.status === 'ran' ? '✅ Ran' : item.status === 'failed' ? '❌ Failed' : '⏭️ Skipped';
+                md += `| ${item.name} | ${statusIcon} | ${this.escapeMarkdown(item.detail || '')} |\n`;
+            });
+            md += '\n';
+        }
         if (data.integrity && data.integrity.testsRun > 0) {
             md += '## 🧬 Data Integrity & Logic Tests\n\n';
             md += '> Verifying complex data structures (loadouts, weapon stats) render correctly.\n\n';

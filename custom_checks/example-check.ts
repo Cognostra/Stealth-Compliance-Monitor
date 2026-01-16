@@ -5,7 +5,7 @@
  */
 
 import { Page } from 'playwright';
-import { CustomCheckContext, CustomCheckViolation } from '../src/core/CustomCheckLoader';
+import { CustomCheckContext, CustomCheckViolation } from '../src/core/CustomCheckLoader.js';
 
 export async function check(page: Page, context: CustomCheckContext): Promise<CustomCheckViolation[]> {
     const violations: CustomCheckViolation[] = [];

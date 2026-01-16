@@ -45,6 +45,8 @@ export interface CustomCheckViolation {
 export interface CustomCheckResult {
     /** Check name */
     name: string;
+    /** Optional check metadata */
+    meta?: CustomCheckMeta;
     /** Pass/fail status */
     passed: boolean;
     /** List of violations found */
@@ -80,12 +82,23 @@ export type CustomCheckFunction = (
 ) => Promise<CustomCheckViolation[]>;
 
 /**
+ * Optional metadata for versioned custom checks
+ */
+export interface CustomCheckMeta {
+    apiVersion: '1.0';
+    name: string;
+    description?: string;
+    owner?: string;
+}
+
+/**
  * Loaded check module
  */
 interface LoadedCheck {
     name: string;
     filePath: string;
     check: CustomCheckFunction;
+    meta?: CustomCheckMeta;
 }
 
 /**
@@ -140,6 +153,7 @@ export class CustomCheckLoader {
                 const module = await import(filePath);
 
                 let checkFn: CustomCheckFunction | undefined;
+                let meta: CustomCheckMeta | undefined;
 
                 // Handle different export patterns (ESM vs CJS)
                 if (typeof module.default === 'function') {
@@ -153,6 +167,17 @@ export class CustomCheckLoader {
                     checkFn = module.check;
                 }
 
+                if (module.meta && typeof module.meta === 'object') {
+                    meta = module.meta as CustomCheckMeta;
+                } else if (module.checkMeta && typeof module.checkMeta === 'object') {
+                    meta = module.checkMeta as CustomCheckMeta;
+                }
+
+                if (meta && meta.apiVersion !== '1.0') {
+                    this.logger.warn(`Custom check '${checkName}' has unsupported apiVersion: ${meta.apiVersion}`);
+                    meta = undefined;
+                }
+
                 if (!checkFn) {
                     this.logger.warn(`Custom check '${checkName}' does not export a 'check' function or default function`);
                     continue;
@@ -161,7 +186,8 @@ export class CustomCheckLoader {
                 this.loadedChecks.push({
                     name: checkName,
                     filePath,
-                    check: checkFn
+                    check: checkFn,
+                    meta
                 });
 
                 this.logger.debug(`Loaded custom check: ${checkName}`);
@@ -221,6 +247,7 @@ export class CustomCheckLoader {
 
             return {
                 name: loadedCheck.name,
+                meta: loadedCheck.meta,
                 passed: violations.length === 0,
                 violations: violations.map(v => ({
                     ...v,
@@ -237,6 +264,7 @@ export class CustomCheckLoader {
 
             return {
                 name: loadedCheck.name,
+                meta: loadedCheck.meta,
                 passed: false,
                 violations: [],
                 duration,

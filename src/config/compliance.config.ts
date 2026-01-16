@@ -51,6 +51,22 @@ export type ComplianceConfig = EnvConfig & RuntimeProfile & {
     vulnIntelCwe?: boolean;
     vulnIntelCacheTtl?: number;
     vulnIntelCachePath?: string;
+    // Active scan guardrails
+    activeScanAllowed?: boolean;
+    activeScanAllowlist?: string[];
+
+    // Deterministic mode
+    deterministicMode?: boolean;
+    deterministicSeed?: number;
+
+    // Visual regression policy
+    visualDiffThreshold?: number;
+    visualBaselineMaxAgeDays?: number;
+    visualBaselineAutoApprove?: boolean;
+
+    // Redaction
+    redactionEnabled?: boolean;
+    runTag?: string;
 };
 
 export interface WebhookConfig {
@@ -179,6 +195,23 @@ export function createConfig(profileName: string = DEFAULT_PROFILE): ComplianceC
     config.vulnIntelCwe = env.VULN_INTEL_CWE;
     config.vulnIntelCacheTtl = env.VULN_INTEL_CACHE_TTL;
     config.vulnIntelCachePath = env.VULN_INTEL_CACHE_PATH;
+
+    // Active scan guardrails
+    config.activeScanAllowed = env.ACTIVE_SCAN_ALLOWED;
+    config.activeScanAllowlist = env.ACTIVE_SCAN_ALLOWLIST;
+
+    // Deterministic mode
+    config.deterministicMode = env.DETERMINISTIC_MODE;
+    config.deterministicSeed = env.DETERMINISTIC_SEED;
+
+    // Visual regression policy
+    config.visualDiffThreshold = env.VISUAL_DIFF_THRESHOLD;
+    config.visualBaselineMaxAgeDays = env.VISUAL_BASELINE_MAX_AGE_DAYS;
+    config.visualBaselineAutoApprove = env.VISUAL_BASELINE_AUTO_APPROVE;
+
+    // Redaction
+    config.redactionEnabled = env.REDACTION_ENABLED;
+    config.runTag = env.RUN_TAG;
 
     // Configure Webhook
     if (env.WEBHOOK_URL && env.WEBHOOK_URL.length > 0) {

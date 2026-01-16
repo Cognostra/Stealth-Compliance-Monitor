@@ -50,6 +50,11 @@ interface ReportData {
         generatedAt: string;
         targetUrl: string;
         duration: number;
+        runId?: string;
+        profile?: string;
+        gitSha?: string;
+        runTag?: string;
+        activeScanning?: boolean;
         viewport?: { width: number; height: number };
         browserEngine?: string;
         deviceScaleFactor?: number;
@@ -198,6 +203,11 @@ interface ReportData {
             evidence?: string;
             selector?: string;
         }>;
+    }>;
+    coverage?: Array<{
+        name: string;
+        status: 'ran' | 'skipped' | 'failed';
+        detail?: string;
     }>;
     multi_device?: Array<{
         device: string;
@@ -2061,6 +2071,24 @@ export class HtmlReportGenerator {
                     <div class="env-value">${durationSeconds}s</div>
                 </div>
             </div>
+            ${report.meta?.profile ? `
+            <div class="env-item">
+                <span class="env-icon">🧭</span>
+                <div>
+                    <div class="env-label">Profile</div>
+                    <div class="env-value">${report.meta.profile}</div>
+                </div>
+            </div>
+            ` : ''}
+            ${report.meta?.runId ? `
+            <div class="env-item">
+                <span class="env-icon">🆔</span>
+                <div>
+                    <div class="env-label">Run ID</div>
+                    <div class="env-value">${report.meta.runId}</div>
+                </div>
+            </div>
+            ` : ''}
             <div class="env-item">
                 <span class="env-icon">📄</span>
                 <div>
@@ -2083,6 +2111,24 @@ export class HtmlReportGenerator {
                 </div>
             </div>
         </div>
+
+        <!-- Coverage Summary -->
+        ${report.coverage && report.coverage.length > 0 ? `
+        <div class="section-header"><h2>Scan Coverage</h2></div>
+        <div class="compliance-section">
+            ${report.coverage.map(item => {
+                const badgeClass = item.status === 'ran' ? 'badge-success' : item.status === 'failed' ? 'badge-critical' : 'badge-warning';
+                const statusLabel = item.status === 'ran' ? 'Ran' : item.status === 'failed' ? 'Failed' : 'Skipped';
+                return `
+                <div class="compliance-card">
+                    <div class="compliance-standard">${item.name}</div>
+                    <div class="compliance-count"><span class="badge ${badgeClass}">${statusLabel}</span></div>
+                    ${item.detail ? `<div class="compliance-count">${item.detail}</div>` : ''}
+                </div>
+                `;
+            }).join('')}
+        </div>
+        ` : ''}
 
         <!-- Multi-Device Analysis -->
         ${this.buildMultiDeviceSection(report)}
@@ -2457,6 +2503,7 @@ export class HtmlReportGenerator {
             font-weight: 600;
         }
         .badge-success { background: rgba(63,185,80,0.15); color: var(--accent-green); }
+        .badge-warning { background: rgba(210,153,34,0.15); color: var(--accent-yellow); }
         .badge-info { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
 
         .severity-badge {

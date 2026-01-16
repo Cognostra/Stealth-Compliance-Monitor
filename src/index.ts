@@ -22,6 +22,7 @@ import { ComplianceRunner } from './services/ComplianceRunner.js';
 import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator.js';
 import { WebhookService } from './services/WebhookService.js';
 import { ZapActiveScanner } from './services/ZapActiveScanner.js';
+import { initDeterministic } from './utils/random.js';
 
 /**
  * Display help message
@@ -41,6 +42,7 @@ Options:
   --active           Enable ZAP active scanning (spider + attack payloads)
                      ⚠️  WARNING: This is AGGRESSIVE and NOT stealthy
                      Only use with explicit authorization!
+                     Requires ACTIVE_SCAN_ALLOWED=true and allowlist
 
   --headed           Run browser in visible (headed) mode for debugging
   --slow-mo=<ms>     Slow down browser actions by specified milliseconds
@@ -70,6 +72,9 @@ Examples:
 
 Environment Variables:
   See .env.example for full configuration options.
+    Active scan guardrails: ACTIVE_SCAN_ALLOWED, ACTIVE_SCAN_ALLOWLIST
+    Deterministic mode: DETERMINISTIC_MODE, DETERMINISTIC_SEED
+    Redaction: REDACTION_ENABLED
 `);
 }
 
@@ -105,9 +110,32 @@ async function main(): Promise<void> {
     // Load merged configuration
     const config = createConfig(profileName);
 
+    // Deterministic mode for stable CI runs
+    if (config.deterministicMode) {
+        initDeterministic(config.deterministicSeed);
+        logger.info(`Deterministic mode enabled (seed=${config.deterministicSeed})`);
+    }
+
     // Override activeScanning if --active flag is present
     if (activeFlag) {
         (config as { activeScanning: boolean }).activeScanning = true;
+    }
+
+    // Guardrails for active scanning
+    const allowlist = config.activeScanAllowlist || [];
+    if (config.activeScanning) {
+        if (!config.activeScanAllowed) {
+            logger.warn('Active scanning requested but ACTIVE_SCAN_ALLOWED=false. Disabling active scan.');
+            (config as { activeScanning: boolean }).activeScanning = false;
+        } else if (allowlist.length > 0) {
+            const allowed = allowlist.some(allowedTarget => {
+                return config.LIVE_URL.includes(allowedTarget) || allowedTarget === config.LIVE_URL;
+            });
+            if (!allowed) {
+                logger.warn('Active scanning requested but target not in ACTIVE_SCAN_ALLOWLIST. Disabling active scan.');
+                (config as { activeScanning: boolean }).activeScanning = false;
+            }
+        }
     }
 
     // Apply debug mode overrides from CLI flags

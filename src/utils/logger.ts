@@ -6,6 +6,7 @@
 import winston from 'winston';
 import * as fs from 'fs';
 import * as path from 'path';
+import { redactObject, redactString } from './redaction.js';
 
 // Ensure logs directory exists
 const logsDir = path.resolve(process.cwd(), 'logs');
@@ -14,6 +15,24 @@ if (!fs.existsSync(logsDir)) {
 }
 
 const { combine, timestamp, printf, colorize, errors } = winston.format;
+const redactionEnabled = process.env.REDACTION_ENABLED?.toLowerCase() !== 'false';
+
+const redactFormat = winston.format(info => {
+    if (!redactionEnabled) return info;
+    const redacted: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(info)) {
+        if (key === 'message' && typeof val === 'string') {
+            redacted[key] = redactString(val);
+        } else if (key === 'stack' && typeof val === 'string') {
+            redacted[key] = redactString(val);
+        } else if (key === 'level' || key === 'timestamp') {
+            redacted[key] = val;
+        } else {
+            redacted[key] = redactObject(val);
+        }
+    }
+    return redacted as winston.Logform.TransformableInfo;
+});
 
 /**
  * Custom log format for console output
@@ -42,7 +61,8 @@ const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: combine(
         errors({ stack: true }),
-        timestamp({ format: 'YYYY-MM-DD HH:mm:ss' })
+        timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+        redactFormat()
     ),
     transports: [
         // Console transport with colors

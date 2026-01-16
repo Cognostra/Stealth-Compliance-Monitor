@@ -10,6 +10,7 @@
  */
 
 import { Logger } from '../types/index.js';
+import { random } from './random.js';
 
 /**
  * Retry configuration options
@@ -58,7 +59,7 @@ function calculateDelay(
     const cappedDelay = Math.min(exponentialDelay, maxDelay);
     
     // Add jitter: random value between -jitter% and +jitter%
-    const jitterAmount = cappedDelay * jitter * (Math.random() * 2 - 1);
+    const jitterAmount = cappedDelay * jitter * (random() * 2 - 1);
     
     return Math.floor(cappedDelay + jitterAmount);
 }

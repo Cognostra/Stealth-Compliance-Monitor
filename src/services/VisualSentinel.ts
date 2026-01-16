@@ -24,6 +24,9 @@ export interface VisualTestResult {
     diffImagePath?: string;
     baselinePath: string;
     currentPath: string;
+    baselineAgeDays?: number;
+    staleBaseline?: boolean;
+    baselineUpdated?: boolean;
     error?: string;
 }
 
@@ -34,8 +37,21 @@ const VISUAL_CONFIG = {
     threshold: 0.05, // 5% pixel difference allowed
 };
 
+export interface VisualPolicyConfig {
+    diffThreshold?: number;
+    baselineMaxAgeDays?: number;
+    autoApproveBaseline?: boolean;
+}
+
 export class VisualSentinel {
-    constructor() {
+    private policy: Required<VisualPolicyConfig>;
+
+    constructor(policy?: VisualPolicyConfig) {
+        this.policy = {
+            diffThreshold: policy?.diffThreshold ?? VISUAL_CONFIG.threshold,
+            baselineMaxAgeDays: policy?.baselineMaxAgeDays ?? 30,
+            autoApproveBaseline: policy?.autoApproveBaseline ?? false
+        };
         this.ensureDirectories();
     }
 
@@ -65,6 +81,40 @@ export class VisualSentinel {
                 diffPercentage: 0,
                 baselinePath,
                 currentPath
+            };
+        }
+
+        // 1.5 Baseline age policy
+        const stats = fs.statSync(baselinePath);
+        const ageMs = Date.now() - stats.mtimeMs;
+        const ageDays = ageMs / (1000 * 60 * 60 * 24);
+        if (ageDays > this.policy.baselineMaxAgeDays) {
+            if (this.policy.autoApproveBaseline) {
+                logger.warn(`VisualSentinel: Baseline expired (${ageDays.toFixed(1)}d). Auto-approving refresh.`);
+                fs.copyFileSync(currentPath, baselinePath);
+                return {
+                    pageName,
+                    isBaseline: true,
+                    passed: true,
+                    diffPercentage: 0,
+                    baselinePath,
+                    currentPath,
+                    baselineAgeDays: ageDays,
+                    staleBaseline: true,
+                    baselineUpdated: true
+                };
+            }
+
+            return {
+                pageName,
+                isBaseline: false,
+                passed: false,
+                diffPercentage: 0,
+                baselinePath,
+                currentPath,
+                baselineAgeDays: ageDays,
+                staleBaseline: true,
+                error: 'Baseline expired - manual approval required'
             };
         }
 
@@ -123,7 +173,7 @@ export class VisualSentinel {
 
         const totalPixels = width * height;
         const diffPercentage = numDiffPixels / totalPixels;
-        const passed = diffPercentage <= VISUAL_CONFIG.threshold;
+        const passed = diffPercentage <= this.policy.diffThreshold;
 
         let diffImagePath: string | undefined;
 
