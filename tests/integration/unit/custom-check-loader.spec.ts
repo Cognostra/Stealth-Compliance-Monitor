@@ -54,11 +54,9 @@ test.describe('Custom Check Loader', () => {
 
     test('should load valid check files', async () => {
         const checkContent = `
-            module.exports = {
-                check: async (page, context) => {
-                    return [];
-                }
-            };
+            export async function check(page, context) {
+                return [];
+            }
         `;
         fs.writeFileSync(path.join(TEST_CHECKS_DIR, 'valid-check.js'), checkContent);
 
@@ -79,16 +77,14 @@ test.describe('Custom Check Loader', () => {
 
     test('should execute check and return results', async ({ page }) => {
         const checkContent = `
-            module.exports = {
-                check: async (page, context) => {
-                    return [{
-                        id: 'test-violation',
-                        title: 'Test Violation',
-                        severity: 'high',
-                        description: 'This is a test'
-                    }];
-                }
-            };
+            export async function check(page, context) {
+                return [{
+                    id: 'test-violation',
+                    title: 'Test Violation',
+                    severity: 'high',
+                    description: 'This is a test'
+                }];
+            }
         `;
         fs.writeFileSync(path.join(TEST_CHECKS_DIR, 'test-check.js'), checkContent);
 
@@ -114,12 +110,10 @@ test.describe('Custom Check Loader', () => {
 
     test('should handle check timeout', async ({ page }) => {
         const checkContent = `
-            module.exports = {
-                check: async (page, context) => {
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                    return [];
-                }
-            };
+            export async function check(page, context) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                return [];
+            }
         `;
         fs.writeFileSync(path.join(TEST_CHECKS_DIR, 'slow-check.js'), checkContent);
 
