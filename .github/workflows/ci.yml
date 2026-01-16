@@ -228,12 +228,6 @@ jobs:
         image: ghcr.io/zaproxy/zaproxy:stable
         ports:
           - 8080:8080
-        options: >-
-          --health-cmd "curl -f http://localhost:8080/JSON/core/view/version/ || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
 
     steps:
       - name: Checkout Code

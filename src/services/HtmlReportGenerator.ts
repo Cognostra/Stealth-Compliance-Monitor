@@ -743,7 +743,8 @@ export class HtmlReportGenerator {
         }
 
         // Process integrity failures
-        report.integrity.results.filter(r => !r.passed).forEach(result => {
+        const integrityResults = report.integrity?.results ?? [];
+        integrityResults.filter(r => !r.passed).forEach(result => {
             issues.push({
                 id: result.checkType.toLowerCase().replace(/\s+/g, '-'),
                 category: 'integrity',
@@ -1121,7 +1122,7 @@ export class HtmlReportGenerator {
                 highIssues: issues.filter(i => i.severity === 'serious').length,
                 passed: report.summary.passedAudit,
                 duration: report.meta.duration,
-                pagesVisited: report.crawl.pagesVisited
+                pagesVisited: report.crawl?.pagesVisited ?? 0
             }
         };
 
