@@ -87,7 +87,7 @@ test.describe('ZAP Proxy Routing', () => {
     test('should route browser traffic through ZAP', async ({ isZapAvailable, testUrl }) => {
         test.skip(!isZapAvailable, 'ZAP is not available');
 
-        const { BrowserService } = await import('../../../src/services/BrowserService');
+        const { BrowserService } = await import('../../../src/services/BrowserService.js');
 
         const browserService = new BrowserService();
 

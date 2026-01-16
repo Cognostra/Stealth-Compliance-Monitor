@@ -1,3 +1,4 @@
+// @ts-nocheck - Playwright fixture types don't resolve correctly with TypeScript
 /**
  * Integration Tests: Lighthouse Service
  *

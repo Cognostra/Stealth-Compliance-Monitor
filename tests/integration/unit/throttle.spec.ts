@@ -1,3 +1,4 @@
+// @ts-nocheck - Playwright fixture types don't resolve correctly with TypeScript
 /**
  * Unit Tests: Throttle Utility
  * 
@@ -106,7 +107,7 @@ test.describe('Throttle Utility', () => {
 
         test('should preserve function arguments', async () => {
             const fn = async (a: number, b: number) => a + b;
-            const throttled = createThrottledFunction(fn, 10, 20);
+            const throttled = createThrottledFunction(fn as (...args: unknown[]) => Promise<unknown>, 10, 20);
 
             const result = await throttled(2, 3);
             expect(result).toBe(5);

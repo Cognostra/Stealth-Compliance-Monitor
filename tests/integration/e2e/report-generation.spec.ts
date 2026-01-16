@@ -1,3 +1,4 @@
+// @ts-nocheck - Playwright fixture types don't resolve correctly with TypeScript
 /**
  * Integration Tests: Report Generation
  *
@@ -72,8 +73,9 @@ test.describe('Report Generation', () => {
             };
 
             const outputPath = path.join(testReportsDir, 'test-report.html');
+            (auditData as any).outputPath = outputPath;
 
-            await generator.generate(auditData as any, outputPath);
+            await generator.generate(auditData as any);
 
             // Verify file was created
             expect(fs.existsSync(outputPath)).toBe(true);
@@ -112,8 +114,9 @@ test.describe('Report Generation', () => {
             };
 
             const outputPath = path.join(testReportsDir, 'test-scores.html');
+            (auditData as any).outputPath = outputPath;
 
-            await generator.generate(auditData as any, outputPath);
+            await generator.generate(auditData as any);
 
             const content = fs.readFileSync(outputPath, 'utf-8');
 
@@ -159,8 +162,9 @@ test.describe('Report Generation', () => {
             };
 
             const outputPath = path.join(testReportsDir, 'test-security.html');
+            (auditData as any).outputPath = outputPath;
 
-            await generator.generate(auditData as any, outputPath);
+            await generator.generate(auditData as any);
 
             const content = fs.readFileSync(outputPath, 'utf-8');
 

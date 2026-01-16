@@ -12,12 +12,7 @@ export default {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/tests/integration/',
-    '/tests/services/AiRemediationService.test.ts',
-    '/tests/services/WebhookService.test.ts',
-    '/tests/services/VulnIntelligenceService.test.ts',
-    '/tests/services/SiemLogger.test.ts',
     '/tests/services/HistoryService.test.ts',
-    '/tests/services/FleetReportGenerator.test.ts',
     '/tests/services/BrowserService.test.ts'
   ],
   extensionsToTreatAsEsm: ['.ts'],
