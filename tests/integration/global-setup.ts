@@ -58,10 +58,10 @@ async function globalSetup(config: FullConfig): Promise<void> {
 
     if (hasZapTests) {
         console.log(`🔒 Checking ZAP availability at ${zapUrl}...`);
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
 
+        try {
             const response = await fetch(`${zapUrl}/JSON/core/view/version/`, {
                 signal: controller.signal,
             });
@@ -71,11 +71,15 @@ async function globalSetup(config: FullConfig): Promise<void> {
                 const data = await response.json() as { version: string };
                 console.log(`✅ ZAP is available (version: ${data.version})`);
             } else {
-                console.warn(`⚠️ ZAP responded with status ${response.status}`);
+                throw new Error(`ZAP responded with status ${response.status}`);
             }
         } catch (error) {
-            console.warn(`⚠️ ZAP is not available at ${zapUrl}. ZAP tests may be skipped.`);
-            console.warn('   Run "docker-compose up -d zaproxy" to start ZAP.');
+            clearTimeout(timeout);
+            const message = error instanceof Error ? error.message : String(error);
+            throw new Error(
+                `ZAP is required for e2e-with-zap tests but is not available at ${zapUrl}. (${message})\n` +
+                'Start ZAP with: docker-compose up -d zaproxy'
+            );
         }
     }
 

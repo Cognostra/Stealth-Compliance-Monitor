@@ -162,6 +162,57 @@ jobs:
           CI: true
           TEST_BASE_URL: https://example.com
 
+  # ============================================
+  # E2E Tests with ZAP (Required)
+  # ============================================
+  e2e-zap-tests:
+    name: E2E Tests with ZAP
+    runs-on: ubuntu-latest
+    needs: [lint, build]
+
+    services:
+      zaproxy:
+        image: ghcr.io/zaproxy/zaproxy:stable
+        ports:
+          - 8080:8080
+        options: >-
+          --no-healthcheck
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Wait for ZAP to be Ready
+        run: |
+          echo "Waiting for ZAP to be fully ready..."
+          for i in {1..30}; do
+            if curl -s http://localhost:8080/JSON/core/view/version/ > /dev/null; then
+              echo "ZAP is ready!"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run E2E Tests with ZAP
+        run: npm run test:zap
+        env:
+          CI: true
+          TEST_BASE_URL: https://example.com
+          ZAP_PROXY_URL: http://localhost:8080
+
       - name: Upload Test Artifacts
         uses: actions/upload-artifact@v6
         if: always()
