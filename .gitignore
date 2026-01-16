@@ -170,6 +170,15 @@ errors.txt
 errors_*.txt
 lint_results.txt
 lint-output.txt
+test-output.txt
+test-output*.txt
+*.har
+*.trace
+trace.zip
+*.zip
+*.tar.gz
+*.tgz
+*.7z
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ CUSTOM CHECKS & PLUGINS                                                     │
@@ -198,6 +207,17 @@ config.local.json
 # └─────────────────────────────────────────────────────────────────────────────┘
 .DS_Store
 .DS_Store?
+Thumbs.db
+desktop.ini
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ IDE / EDITOR SETTINGS                                                      │
+# └─────────────────────────────────────────────────────────────────────────────┘
+.vscode/
+.idea/
+.history/
+*.swp
+*.swo
 ._*
 Thumbs.db
 ehthumbs.db
