@@ -4,7 +4,7 @@
  */
 
 import { BrowserService } from '../services/BrowserService';
-import { UserFlow, UserFlowResult, FlowStepResult, Logger } from '../types';
+import { UserFlow, UserFlowResult, FlowStepResult, FlowStep, Logger } from '../types';
 
 /**
  * Default user flows for testing
@@ -103,25 +103,27 @@ export class UserFlowRunner {
     /**
      * Execute a single flow step
      */
-    private async executeStep(step: any): Promise<FlowStepResult> {
+    private async executeStep(step: FlowStep): Promise<FlowStepResult> {
         const startTime = Date.now();
 
         try {
             switch (step.action) {
-                case 'navigate':
+                case 'navigate': {
                     const url = step.value?.startsWith('http')
                         ? step.value
                         : `${this.baseUrl}${step.value}`;
                     // Use goto() instead of navigate() - enforces human delay
                     await this.browserService.goto(url);
                     break;
+                }
 
-                case 'click':
+                case 'click': {
                     await this.browserService.waitForSelector(step.selector!, step.timeout || 10000);
                     await this.browserService.click(step.selector!);
                     break;
+                }
 
-                case 'type':
+                case 'type': {
                     await this.browserService.waitForSelector(step.selector!, step.timeout || 10000);
                     const value = this.interpolateValue(step.value!);
                     // Use fill() for faster input, type() is also available for keystroke simulation
@@ -130,26 +132,30 @@ export class UserFlowRunner {
                         throw new Error(typeResult.error);
                     }
                     break;
+                }
 
-                case 'wait':
+                case 'wait': {
                     if (step.selector) {
                         await this.browserService.waitForSelector(step.selector, step.timeout || 10000);
                     } else {
                         await new Promise(resolve => setTimeout(resolve, step.timeout || 2000));
                     }
                     break;
+                }
 
-                case 'verify':
+                case 'verify': {
                     const exists = await this.browserService.elementExists(step.selector!);
                     if (!exists) {
                         throw new Error(`Element not found: ${step.selector}`);
                     }
                     break;
+                }
 
-                case 'screenshot':
+                case 'screenshot': {
                     const screenshotName = step.value || `step_${Date.now()}`;
                     await this.browserService.screenshot(screenshotName);
                     break;
+                }
 
                 default:
                     throw new Error(`Unknown action: ${step.action}`);

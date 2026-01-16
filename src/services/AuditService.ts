@@ -11,6 +11,7 @@
 
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
+import { devices } from 'playwright';
 import { getConfig, EnvConfig } from '../config/env';
 import { logger } from '../utils/logger';
 import { persistenceService } from './PersistenceService';
@@ -143,12 +144,12 @@ export class AuditService {
     /**
      * Run full audit (Lighthouse + ZAP)
      */
-    async runFullAudit(targetUrl?: string): Promise<AuditResult> {
+    async runFullAudit(targetUrl?: string, deviceName: string = 'desktop'): Promise<AuditResult> {
         const url = targetUrl || this.config.LIVE_URL;
-        logger.info(`Starting full audit on: ${url}`);
+        logger.info(`Starting full audit on: ${url} (Device: ${deviceName})`);
 
         // Run Lighthouse audit
-        const lighthouseResult = await this.runLighthouseAudit(url);
+        const lighthouseResult = await this.runLighthouseAudit(url, deviceName);
 
         // Get ZAP security alerts (passive only)
         const securityAlerts = await this.getSecurityAlerts();
@@ -190,7 +191,8 @@ export class AuditService {
                 target: result.targetUrl,
                 lighthouse: result.lighthouse,
                 findings: result.security_alerts,
-                summary: result.summary
+                summary: result.summary,
+                device: deviceName
             });
         }
 
@@ -202,10 +204,36 @@ export class AuditService {
     /**
      * Run Lighthouse audit with Desktop configuration
      */
-    async runLighthouseAudit(url: string): Promise<LighthouseResult | null> {
-        logger.info('Running Lighthouse audit (Desktop mode)...');
+    async runLighthouseAudit(url: string, deviceName: string = 'desktop'): Promise<LighthouseResult | null> {
+        logger.info(`Running Lighthouse audit (${deviceName} mode)...`);
 
         try {
+            // Determine Lighthouse Config
+            let lighthouseConfig: any = LIGHTHOUSE_DESKTOP_CONFIG;
+
+            if (deviceName !== 'desktop') {
+                const device = devices[deviceName];
+                if (device) {
+                    lighthouseConfig = {
+                        extends: 'lighthouse:default',
+                        settings: {
+                            formFactor: 'mobile',
+                            screenEmulation: {
+                                mobile: true,
+                                width: device.viewport.width,
+                                height: device.viewport.height,
+                                deviceScaleFactor: device.deviceScaleFactor,
+                                disabled: false,
+                            },
+                            emulatedUserAgent: device.userAgent,
+                            // Use default mobile throttling
+                        }
+                    };
+                } else {
+                    logger.warn(`Device '${deviceName}' not found, falling back to Desktop config`);
+                }
+            }
+
             // Launch Chrome for Lighthouse
             this.chrome = await chromeLauncher.launch({
                 chromeFlags: [
@@ -227,7 +255,7 @@ export class AuditService {
                     logLevel: 'error',
                     onlyCategories: ['performance', 'accessibility', 'seo', 'best-practices'],
                 },
-                LIGHTHOUSE_DESKTOP_CONFIG
+                lighthouseConfig
             );
 
             if (!result || !result.lhr) {

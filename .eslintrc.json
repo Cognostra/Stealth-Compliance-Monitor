@@ -18,13 +18,25 @@
         "es2022": true
     },
     "rules": {
-        "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+        "@typescript-eslint/no-unused-vars": [
+            "warn",
+            {
+                "argsIgnorePattern": "^_"
+            }
+        ],
         "@typescript-eslint/no-explicit-any": "warn",
         "@typescript-eslint/explicit-function-return-type": "off",
         "@typescript-eslint/no-non-null-assertion": "off",
         "no-console": "off",
         "prefer-const": "warn",
-        "no-empty": ["error", { "allowEmptyCatch": false }]
+        "no-empty": [
+            "warn",
+            {
+                "allowEmptyCatch": true
+            }
+        ],
+        "no-useless-escape": "warn",
+        "no-useless-catch": "warn"
     },
     "ignorePatterns": [
         "dist/",

@@ -5,6 +5,7 @@
 
 import { SecurityAlert, Logger } from '../types';
 import { EnvConfig } from '../config/env';
+import { retryNetwork } from '../utils/retry';
 
 /**
  * ZAP Alert Risk Levels
@@ -28,12 +29,39 @@ export class ZapService {
     private readonly config: EnvConfig;
     private readonly logger: Logger;
     private readonly baseUrl: string;
+    private readonly apiKey: string | undefined;
     private isInitialized: boolean = false;
 
     constructor(config: EnvConfig, logger: Logger) {
         this.config = config;
         this.logger = logger;
         this.baseUrl = config.ZAP_PROXY_URL;
+        this.apiKey = config.ZAP_API_KEY;
+
+        if (this.apiKey) {
+            this.logger.debug('ZAP API key configured');
+        } else {
+            this.logger.debug('ZAP API key not configured (running without authentication)');
+        }
+    }
+
+    /**
+     * Build ZAP API URL with optional API key parameter
+     */
+    private buildUrl(endpoint: string, params: Record<string, string> = {}): string {
+        const url = new URL(endpoint, this.baseUrl);
+
+        // Add API key if configured
+        if (this.apiKey) {
+            url.searchParams.set('apikey', this.apiKey);
+        }
+
+        // Add additional params
+        for (const [key, value] of Object.entries(params)) {
+            url.searchParams.set(key, value);
+        }
+
+        return url.toString();
     }
 
     /**
@@ -41,8 +69,11 @@ export class ZapService {
      */
     async initialize(): Promise<void> {
         try {
-            // Check ZAP status
-            const response = await fetch(`${this.baseUrl}/JSON/core/view/version/`);
+            // Check ZAP status with retry
+            const response = await retryNetwork(
+                () => fetch(this.buildUrl('/JSON/core/view/version/')),
+                { retries: 3, baseDelay: 2000 }
+            );
 
             if (!response.ok) {
                 throw new Error(`ZAP API returned status ${response.status}`);
@@ -69,15 +100,25 @@ export class ZapService {
      */
     private async verifyPassiveMode(): Promise<void> {
         try {
-            const response = await fetch(`${this.baseUrl}/JSON/pscan/view/scanOnlyInScope/`);
+            const response = await fetch(this.buildUrl('/JSON/pscan/view/scanOnlyInScope/'));
 
             if (response.ok) {
                 this.logger.info('ZAP passive scanner verified');
+            } else {
+                this.logger.warn(`ZAP passive scanner check returned status ${response.status}`);
             }
 
             // Disable active scanning as a safety measure
-            await fetch(`${this.baseUrl}/JSON/ascan/action/disableAllScanners/`);
-            this.logger.info('ZAP active scanners disabled (SAFETY GUARDRAIL)');
+            try {
+                const disableResponse = await fetch(this.buildUrl('/JSON/ascan/action/disableAllScanners/'));
+                if (disableResponse.ok) {
+                    this.logger.info('ZAP active scanners disabled (SAFETY GUARDRAIL)');
+                } else {
+                    this.logger.warn(`Failed to disable ZAP active scanners: status ${disableResponse.status}`);
+                }
+            } catch (disableError) {
+                this.logger.warn(`Failed to disable ZAP active scanners: ${disableError}`);
+            }
         } catch (error) {
             this.logger.debug(`Passive mode check: ${error}`);
         }
@@ -88,16 +129,21 @@ export class ZapService {
      */
     private async setScope(): Promise<void> {
         try {
-            const targetUrl = encodeURIComponent(this.config.LIVE_URL);
-
             // Add URL to context/scope
-            await fetch(
-                `${this.baseUrl}/JSON/context/action/includeInContext/?contextName=Default+Context&regex=${targetUrl}.*`
+            const response = await fetch(
+                this.buildUrl('/JSON/context/action/includeInContext/', {
+                    contextName: 'Default Context',
+                    regex: `${this.config.LIVE_URL}.*`
+                })
             );
 
-            this.logger.info(`ZAP scope set to: ${this.config.LIVE_URL}`);
+            if (response.ok) {
+                this.logger.info(`ZAP scope set to: ${this.config.LIVE_URL}`);
+            } else {
+                this.logger.warn(`Failed to set ZAP scope: status ${response.status}`);
+            }
         } catch (error) {
-            this.logger.debug(`Scope setting: ${error}`);
+            this.logger.debug(`Scope setting failed: ${error}`);
         }
     }
 
@@ -118,9 +164,8 @@ export class ZapService {
         }
 
         try {
-            const encodedUrl = encodeURIComponent(url);
             const response = await fetch(
-                `${this.baseUrl}/JSON/alert/view/alerts/?baseurl=${encodedUrl}`
+                this.buildUrl('/JSON/alert/view/alerts/', { baseurl: url })
             );
 
             if (!response.ok) {

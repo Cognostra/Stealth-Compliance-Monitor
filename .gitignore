@@ -1,12 +1,16 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEALTH COMPLIANCE MONITOR - .gitignore
 # ═══════════════════════════════════════════════════════════════════════════════
-# SECURITY NOTICE: This file is configured to prevent sensitive data leaks.
-# Do NOT modify without security review.
+# SECURITY NOTICE: This file prevents sensitive data leaks.
+# - NEVER commit .env files with real credentials
+# - NEVER commit reports containing real target data or PII
+# - NEVER commit screenshots/snapshots from real audits
+# - Review changes to this file with security team before merging
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ CRITICAL - ENVIRONMENT & SECRETS                                            │
+# │ These files may contain API keys, passwords, tokens, and target URLs        │
 # └─────────────────────────────────────────────────────────────────────────────┘
 .env
 .env.*
@@ -16,29 +20,74 @@
 *.crt
 *.p12
 *.pfx
+*.cert
 certs/
 secrets/
 credentials/
+credentials.json
+auth-storage/
+*.session.json
 targets.json
+targets.*.json
+fleet-targets.json
+
+# API Keys & External Service Credentials
+.api_keys
+.openai
+.anthropic
+.nvd_api_key
+defectdojo.config.json
+*.apikey
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ CRITICAL - GENERATED REPORTS & AUDIT DATA                                   │
+# │ Reports may contain target URLs, vulnerabilities, PII, and sensitive info   │
 # └─────────────────────────────────────────────────────────────────────────────┘
 reports/
+!reports/.gitkeep
 logs/
+!logs/.gitkeep
 screenshots/
+!screenshots/.gitkeep
+test-screenshots/
 audit_report.json
 AUDIT_SUMMARY.md
+*.sarif
+!examples/*.sarif
+
+# PDF reports (may contain sensitive data)
 *.pdf
+!docs/*.pdf
+!examples/*.pdf
+
+# HTML reports (except templates)
+reports/**/*.html
+!reports/templates/*.html
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ VISUAL REGRESSION SNAPSHOTS                                                 │
+# │ Snapshots contain screenshots of target applications                        │
 # └─────────────────────────────────────────────────────────────────────────────┘
 snapshots/
-# Uncomment below to preserve baselines (remove the line above first)
-# snapshots/current/
-# snapshots/diff/
-# !snapshots/baseline/
+!snapshots/.gitkeep
+# To preserve baseline examples, use:
+# !snapshots/baseline/examples/
+baselines/
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ CACHE DIRECTORIES                                                           │
+# │ Caches may contain sensitive data or API responses                          │
+# └─────────────────────────────────────────────────────────────────────────────┘
+cache/
+.cache/
+.npm/
+.pnpm-store/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/install-state.gz
+vuln-intel-cache.json
+*.cache.json
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ DEPENDENCIES & BUILD OUTPUT                                                 │
@@ -48,57 +97,163 @@ dist/
 out/
 build/
 coverage/
-.cache/
+.nyc_output/
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ TYPESCRIPT                                                                  │
+# └─────────────────────────────────────────────────────────────────────────────┘
+*.tsbuildinfo
+.tsbuild/
+tsconfig.tsbuildinfo
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ PLAYWRIGHT & TESTING                                                        │
+# │ Test artifacts may contain screenshots/videos of target applications        │
 # └─────────────────────────────────────────────────────────────────────────────┘
 test-results/
+!test-results/.gitkeep
 playwright-report/
 blob-report/
 .playwright/
+@playwright/
+playwright/.cache/
+videos/
+traces/
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ OWASP ZAP                                                                   │
+# │ OWASP ZAP & SECURITY TOOLS                                                  │
+# │ ZAP sessions contain full request/response data from targets                │
 # └─────────────────────────────────────────────────────────────────────────────┘
 zap/
+zap-data/
 zap.log
+*.zap
+*.session
+*.context
+
+# Nuclei (if used)
+nuclei-data/
+nuclei-output/
+*.nuclei.json
+
+# DefectDojo exports
+defectdojo-exports/
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DOCKER & CONTAINER DATA                                                     │
+# │ Container volumes may persist sensitive scan data                           │
+# └─────────────────────────────────────────────────────────────────────────────┘
+.docker/
+docker-compose.override.yml
+docker-compose.local.yml
+redis-data/
+postgres-data/
+volumes/
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ LOGS & TEMPORARY FILES                                                      │
 # └─────────────────────────────────────────────────────────────────────────────┘
 *.log
 *.jsonl
+temp/
+tmp/
 *.tmp
 *.bak
 *.local
-npm-debug.log
-yarn-error.log
+*.backup
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 errors.txt
-errors_a11y.txt
-errors_resilience.txt
+errors_*.txt
+lint_results.txt
+lint-output.txt
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ CUSTOM CHECKS & PLUGINS                                                     │
+# │ Users may create private checks containing proprietary logic                │
+# └─────────────────────────────────────────────────────────────────────────────┘
+custom_checks/*
+!custom_checks/example-check.ts
+!custom_checks/README.md
+!custom_checks/.gitkeep
+
+# Private/local plugins (user-specific)
+plugins/private_*/
+plugins/local_*/
+plugins/community/*
+!plugins/community/README.md
+!plugins/community/.gitkeep
+
+# Private schedules and configurations
+schedules.private.json
+config.local.json
+*.private.json
+*.local.json
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ SYSTEM FILES                                                                │
 # └─────────────────────────────────────────────────────────────────────────────┘
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
 Desktop.ini
+$RECYCLE.BIN/
 Crashpad/
 *.dmp
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
 # │ IDE & EDITOR                                                                │
+# │ May contain workspace-specific paths or debugging configurations            │
 # └─────────────────────────────────────────────────────────────────────────────┘
-.vscode/
+.vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json.example
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-workspace
+*.sublime-project
+
+# JetBrains IDEs
+*.iml
+*.ipr
+*.iws
 
 # ┌─────────────────────────────────────────────────────────────────────────────┐
-# │ TYPESCRIPT                                                                  │
+# │ MISCELLANEOUS                                                               │
 # └─────────────────────────────────────────────────────────────────────────────┘
-*.tsbuildinfo
+# Large binary files that shouldn't be in repo
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Backup files
+*.orig
+*.rej
+
+# Package manager locks (keep only one)
+# Uncomment whichever you DON'T use:
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ SECURITY SCAN OUTPUTS                                                       │
+# │ These may contain vulnerability details about targets                       │
+# └─────────────────────────────────────────────────────────────────────────────┘
+security-scan-results/
+vulnerability-reports/
+*.findings.json
+*.vulnerabilities.json
+trufflehog-results/
+gitleaks-results/
+

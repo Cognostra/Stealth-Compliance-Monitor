@@ -7,6 +7,7 @@
  * Supports:
  * - Standard in-memory report generation
  * - WAL (Write-Ahead Log) file recovery for crash resilience
+ * - Custom branding and white-label options
  */
 
 import * as fs from 'fs';
@@ -21,6 +22,24 @@ import { getComplianceTags } from '../data/compliance-map';
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Branding configuration for white-label reports
+ */
+export interface BrandingConfig {
+    /** Company/organization name */
+    companyName: string;
+    /** URL to logo image (PNG/SVG recommended) */
+    logoUrl?: string;
+    /** Primary brand color (hex format) */
+    primaryColor: string;
+    /** URL to external CSS file */
+    customCssUrl?: string;
+    /** Custom footer text */
+    footerText?: string;
+    /** Report title prefix */
+    reportTitle?: string;
+}
 
 /**
  * Report data structure (matches the output from index.ts)
@@ -158,6 +177,78 @@ interface ReportData {
             cookies: Array<{ name: string; secure: boolean; httpOnly: boolean; sameSite: string }>;
         };
     } | null;
+    active_scan?: {
+        enabled: boolean;
+        spiderUrls: string[];
+        passiveAlerts: Array<{ name: string; risk: string; description: string; url: string; }>;
+        activeAlerts: Array<{ name: string; risk: string; description: string; url: string; }>;
+        duration: number;
+        completed: boolean;
+    } | null;
+    custom_checks?: Array<{
+        name: string;
+        passed: boolean;
+        violations: Array<{
+            id: string;
+            title: string;
+            severity: string;
+            description: string;
+            url?: string;
+            remediation?: string;
+            evidence?: string;
+            selector?: string;
+        }>;
+    }>;
+    multi_device?: Array<{
+        device: string;
+        lighthouse: {
+            scores: {
+                performance: number;
+                accessibility: number;
+                seo: number;
+                bestPractices: number;
+            };
+            metrics: any;
+        } | null;
+        crawlSummary: {
+            pagesVisited: number;
+            failedPages: number;
+        };
+        screenshotPath?: string;
+    }>;
+    vuln_intelligence?: {
+        enabled: boolean;
+        enrichedLibraries: Array<{
+            cveId: string;
+            cveDescription?: string;
+            cwe?: { id: string; name: string; description: string };
+            cvss: { version: string; baseScore: number; severity: string; vector: string };
+            exploit: { available: boolean; source?: string; maturity?: string };
+            knownExploitedVuln: boolean;
+            remediation: { type: string; description: string; targetVersion?: string; effort: string; priority: number };
+            riskScore: number;
+            riskFactors: string[];
+        }>;
+        enrichedAlerts: Array<{
+            cveId: string;
+            cveDescription?: string;
+            cwe?: { id: string; name: string; description: string };
+            cvss: { version: string; baseScore: number; severity: string; vector: string };
+            exploit: { available: boolean; source?: string; maturity?: string };
+            knownExploitedVuln: boolean;
+            remediation: { type: string; description: string; targetVersion?: string; effort: string; priority: number };
+            riskScore: number;
+            riskFactors: string[];
+        }>;
+        summary: {
+            totalFindings: number;
+            bySeverity: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number; NONE: number };
+            withExploits: number;
+            inKev: number;
+            averageRiskScore: number;
+            topCves: Array<{ cveId: string; riskScore: number }>;
+        };
+    } | null;
     summary: {
         performanceScore: number;
         accessibilityScore: number;
@@ -169,6 +260,8 @@ interface ReportData {
         securityHigh?: number;
         supabaseIssues?: number;
         vulnerableLibraries?: number;
+        activeAlerts?: number;
+        customViolations?: number;
         crawlPagesInvalid: number;
         crawlPagesSuspicious: number;
         integrityFailures: number;
@@ -330,6 +423,16 @@ const DEFAULT_REMEDIATION = {
     docsUrl: 'https://developer.mozilla.org/en-US/docs/Web'
 };
 
+// Default branding configuration
+const DEFAULT_BRANDING: BrandingConfig = {
+    companyName: 'Stealth Compliance Monitor',
+    primaryColor: '#3fb950',
+    logoUrl: undefined,
+    customCssUrl: undefined,
+    footerText: undefined,
+    reportTitle: undefined,
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN CLASS
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -338,11 +441,20 @@ export class HtmlReportGenerator {
     private reportsDir: string;
     private aiService: AiRemediationService;
     private historyService: HistoryService;
+    private branding: BrandingConfig;
 
-    constructor(reportsDir: string = './reports') {
+    constructor(reportsDir: string = './reports', branding?: Partial<BrandingConfig>) {
         this.reportsDir = reportsDir;
         this.aiService = new AiRemediationService();
         this.historyService = new HistoryService();
+        this.branding = { ...DEFAULT_BRANDING, ...branding };
+    }
+
+    /**
+     * Update branding configuration after construction
+     */
+    public setBranding(branding: Partial<BrandingConfig>): void {
+        this.branding = { ...this.branding, ...branding };
     }
 
     /**
@@ -737,6 +849,61 @@ export class HtmlReportGenerator {
             });
         }
 
+        // Process active scan alerts
+        if (report.active_scan?.activeAlerts) {
+            report.active_scan.activeAlerts.forEach(alert => {
+                const riskMap: Record<string, 'critical' | 'serious' | 'warning'> = {
+                    High: 'critical',
+                    Medium: 'serious',
+                    Low: 'warning'
+                };
+
+                issues.push({
+                    id: `active-${alert.name.toLowerCase().replace(/\s+/g, '-')}`,
+                    category: 'security',
+                    severity: riskMap[alert.risk] || 'warning',
+                    effort: 'medium',
+                    component: new URL(alert.url).pathname || '/',
+                    playwrightLocator: `await page.goto('${alert.url}')`,
+                    issue: `[ACTIVE SCAN] ${alert.description}`,
+                    remediation: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.remediation ||
+                        'Review security configuration and apply recommended headers.',
+                    docsUrl: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.docsUrl ||
+                        'https://owasp.org/www-project-web-security-testing-guide/',
+                    url: alert.url,
+                    complianceTags: getComplianceTags(alert.name)
+                });
+            });
+        }
+
+        // Process custom check violations
+        if (report.custom_checks) {
+            report.custom_checks.forEach(check => {
+                check.violations.forEach(v => {
+                    const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
+                        critical: 'critical',
+                        high: 'serious',
+                        medium: 'warning',
+                        low: 'info',
+                        info: 'info'
+                    };
+
+                    issues.push({
+                        id: v.id,
+                        category: 'integrity',
+                        severity: severityMap[v.severity.toLowerCase()] || 'warning',
+                        effort: 'medium',
+                        component: check.name,
+                        playwrightLocator: v.selector ? `page.locator('${v.selector}')` : '// Custom check violation',
+                        issue: v.description + (v.evidence ? ` Evidence: ${v.evidence}` : ''),
+                        remediation: v.remediation || 'Fix the custom check violation.',
+                        url: v.url,
+                        docsUrl: '#'
+                    });
+                });
+            });
+        }
+
 
 
         // Apply AI Remediation for Critical Issues
@@ -1051,6 +1218,8 @@ export class HtmlReportGenerator {
                         ${this.escapeHtml(report.meta.targetUrl)}
                     </a>
                     <span class="timestamp">${new Date(report.meta.generatedAt).toLocaleString()}</span>
+                    ${report.active_scan?.enabled ?
+                '<span class="active-scan-badge">⚠️ ACTIVE SCANNING ENABLED</span>' : ''}
                 </div>
             </div>
             <div class="health-gauge">
@@ -1427,7 +1596,157 @@ export class HtmlReportGenerator {
                 </table>
             </div>
             ` : ''}
+            
+            ${this.buildVulnIntelligenceSection(report)}
         </section>`;
+    }
+
+    /**
+     * Build Vulnerability Intelligence Section
+     */
+    private buildVulnIntelligenceSection(report: ReportData): string {
+        const vulnIntel = report.vuln_intelligence;
+        if (!vulnIntel || !vulnIntel.enabled) {
+            return '';
+        }
+
+        const { summary, enrichedLibraries, enrichedAlerts } = vulnIntel;
+        const allEnriched = [...enrichedLibraries, ...enrichedAlerts];
+        
+        // Sort by risk score descending
+        allEnriched.sort((a, b) => b.riskScore - a.riskScore);
+        const topRisks = allEnriched.slice(0, 10);
+
+        return `
+        <div class="vuln-intel-section">
+            <h3>🔍 Vulnerability Intelligence</h3>
+            <p class="section-subtitle">CVE enrichment, CVSS scoring, and exploit intelligence</p>
+            
+            <div class="intel-summary-grid">
+                <div class="intel-stat">
+                    <span class="intel-value">${summary.totalFindings}</span>
+                    <span class="intel-label">Total Enriched</span>
+                </div>
+                <div class="intel-stat critical">
+                    <span class="intel-value">${summary.bySeverity.CRITICAL}</span>
+                    <span class="intel-label">Critical</span>
+                </div>
+                <div class="intel-stat high">
+                    <span class="intel-value">${summary.bySeverity.HIGH}</span>
+                    <span class="intel-label">High</span>
+                </div>
+                <div class="intel-stat warning">
+                    <span class="intel-value">${summary.withExploits}</span>
+                    <span class="intel-label">With Exploits</span>
+                </div>
+                <div class="intel-stat danger">
+                    <span class="intel-value">${summary.inKev}</span>
+                    <span class="intel-label">In CISA KEV</span>
+                </div>
+                <div class="intel-stat">
+                    <span class="intel-value">${summary.averageRiskScore}</span>
+                    <span class="intel-label">Avg Risk Score</span>
+                </div>
+            </div>
+            
+            ${topRisks.length > 0 ? `
+            <div class="top-risks">
+                <h4>🎯 Top Risk Vulnerabilities</h4>
+                <table class="intel-table">
+                    <thead>
+                        <tr>
+                            <th>Risk</th>
+                            <th>CVE</th>
+                            <th>CWE</th>
+                            <th>CVSS</th>
+                            <th>Exploit</th>
+                            <th>KEV</th>
+                            <th>Risk Factors</th>
+                            <th>Remediation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${topRisks.map(v => `
+                        <tr class="risk-row risk-${v.riskScore >= 80 ? 'critical' : v.riskScore >= 60 ? 'high' : v.riskScore >= 40 ? 'medium' : 'low'}">
+                            <td>
+                                <div class="risk-score-badge" style="background: ${this.getRiskColor(v.riskScore)}">
+                                    ${v.riskScore}
+                                </div>
+                            </td>
+                            <td>
+                                <a href="https://nvd.nist.gov/vuln/detail/${v.cveId}" target="_blank" class="cve-link">
+                                    ${v.cveId}
+                                </a>
+                            </td>
+                            <td>
+                                ${v.cwe 
+                                    ? `<a href="https://cwe.mitre.org/data/definitions/${v.cwe.id.replace('CWE-', '')}.html" target="_blank" class="cwe-link" title="${this.escapeHtml(v.cwe.description)}">
+                                        ${v.cwe.id}<br><small>${this.escapeHtml(v.cwe.name)}</small>
+                                    </a>`
+                                    : '<span class="cwe-unknown">—</span>'
+                                }
+                            </td>
+                            <td>
+                                <span class="cvss-badge cvss-${v.cvss.severity.toLowerCase()}" title="${v.cvss.vector}">
+                                    ${v.cvss.baseScore} ${v.cvss.severity}
+                                </span>
+                            </td>
+                            <td>
+                                ${v.exploit.available 
+                                    ? `<span class="exploit-badge danger">⚠️ ${v.exploit.source || 'Available'}${v.exploit.maturity ? ` (${v.exploit.maturity})` : ''}</span>`
+                                    : '<span class="exploit-badge safe">None Known</span>'
+                                }
+                            </td>
+                            <td>
+                                ${v.knownExploitedVuln 
+                                    ? '<span class="kev-badge danger">🚨 IN KEV</span>'
+                                    : '<span class="kev-badge safe">—</span>'
+                                }
+                            </td>
+                            <td>
+                                <ul class="risk-factors">
+                                    ${v.riskFactors.map(f => `<li>${this.escapeHtml(f)}</li>`).join('')}
+                                </ul>
+                            </td>
+                            <td>
+                                <div class="remediation-cell">
+                                    <span class="effort-badge effort-${v.remediation.effort}">${v.remediation.effort}</span>
+                                    <p>${this.escapeHtml(v.remediation.description)}</p>
+                                    ${v.remediation.targetVersion ? `<code>→ v${v.remediation.targetVersion}</code>` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            ` : '<p class="no-intel">No enriched vulnerability data available</p>'}
+            
+            ${summary.topCves.length > 0 ? `
+            <div class="top-cves">
+                <h4>📊 Priority CVEs</h4>
+                <div class="cve-chips">
+                    ${summary.topCves.map(c => `
+                        <a href="https://nvd.nist.gov/vuln/detail/${c.cveId}" target="_blank" 
+                           class="cve-chip" style="border-color: ${this.getRiskColor(c.riskScore)}">
+                            ${c.cveId} <span class="chip-score">${c.riskScore}</span>
+                        </a>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+        </div>`;
+    }
+
+    /**
+     * Get color for risk score
+     */
+    private getRiskColor(score: number): string {
+        if (score >= 80) return '#dc3545'; // Critical - red
+        if (score >= 60) return '#fd7e14'; // High - orange
+        if (score >= 40) return '#ffc107'; // Medium - yellow
+        if (score >= 20) return '#28a745'; // Low - green
+        return '#6c757d'; // Info - gray
     }
 
     /**
@@ -1520,10 +1839,11 @@ export class HtmlReportGenerator {
      * Build footer
      */
     private buildFooter(report: ReportData): string {
+        const footerText = this.branding.footerText || `${this.branding.companyName} v${report.meta.version}`;
         return `
         <footer class="footer">
             <div class="footer-left">
-                <span>Stealth Compliance Monitor v${report.meta.version}</span>
+                <span>${footerText}</span>
             </div>
             <div class="footer-right">
                 <span>Audit completed in ${(report.meta.duration / 1000).toFixed(2)}s</span>
@@ -1564,6 +1884,73 @@ export class HtmlReportGenerator {
     }
 
     /**
+     * Build Multi-Device Analysis section
+     */
+    private buildMultiDeviceSection(report: ReportData): string {
+        if (!report.multi_device || report.multi_device.length === 0) {
+            return '';
+        }
+
+        return `
+        <section class="multi-device-section">
+            <div class="section-header">
+                <h2>📱 Multi-Device Analysis</h2>
+                <div class="filter-controls">
+                     <span class="badge badge-info">${report.multi_device.length} Devices Scanned</span>
+                </div>
+            </div>
+            <div class="device-grid">
+                ${report.multi_device.map(d => {
+            const scores = d.lighthouse?.scores || { performance: 0, accessibility: 0, seo: 0, bestPractices: 0 };
+            const avgScore = Math.round((scores.performance + scores.accessibility + scores.seo) / 3);
+            const scoreClass = avgScore >= 90 ? 'good' : avgScore >= 70 ? 'warning' : 'critical';
+
+            return `
+                    <div class="device-card">
+                        <div class="device-header">
+                            <h3>${this.escapeHtml(d.device)}</h3>
+                            <span class="device-score score-${scoreClass}">${avgScore}</span>
+                        </div>
+                        <div class="device-metrics">
+                            <div class="metric-row">
+                                <span>Performance</span>
+                                <span class="metric-val ${scores.performance >= 90 ? 'good' : 'bad'}">${scores.performance}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span>Accessibility</span>
+                                <span class="metric-val ${scores.accessibility >= 90 ? 'good' : 'bad'}">${scores.accessibility}</span>
+                            </div>
+                            <div class="metric-row">
+                                <span>SEO</span>
+                                <span class="metric-val ${scores.seo >= 90 ? 'good' : 'bad'}">${scores.seo}</span>
+                            </div>
+                        </div>
+                        <div class="device-stats">
+                            <span title="Pages Visited">📄 ${d.crawlSummary.pagesVisited}</span>
+                            <span title="Failed Pages" class="${d.crawlSummary.failedPages > 0 ? 'bad' : ''}">❌ ${d.crawlSummary.failedPages}</span>
+                        </div>
+                        ${d.screenshotPath ? `
+                        <div class="device-screenshot">
+                            <img src="${this.getRelativeScreenshotPath(d.screenshotPath)}" alt="Screenshot of ${d.device}" loading="lazy" onclick="window.open(this.src, '_blank')">
+                        </div>` : ''}
+                    </div>
+                `;
+        }).join('')}
+            </div>
+        </section>`;
+    }
+
+    private getRelativeScreenshotPath(absPath: string): string {
+        try {
+            if (fs.existsSync(absPath)) {
+                const imageBuffer = fs.readFileSync(absPath);
+                return `data:image/png;base64,${imageBuffer.toString('base64')}`;
+            }
+        } catch { }
+        return 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCI+Tm8gSW1hZ2U8L3RleHQ+PC9zdmc+';
+    }
+
+    /**
      * Build HTML Content
      */
     private buildHtml(report: ReportData, issues: ArchitectIssue[], healthScore: number, quickWins: ArchitectIssue[], history: any): string {
@@ -1584,23 +1971,38 @@ export class HtmlReportGenerator {
             .sort(([, a], [, b]) => b - a)
             .slice(0, 4);
 
+        // Build branding elements
+        const reportTitle = this.branding.reportTitle 
+            ? `${this.branding.reportTitle} Compliance Report`
+            : 'Compliance Executive Report';
+        const logoHtml = this.branding.logoUrl 
+            ? `<img src="${this.branding.logoUrl}" alt="${this.branding.companyName}" class="brand-logo" />`
+            : '';
+        const customCssLink = this.branding.customCssUrl 
+            ? `<link rel="stylesheet" href="${this.branding.customCssUrl}" />`
+            : '';
+
         return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Compliance Audit - ${this.extractDomainName(report.meta.targetUrl)}</title>
+    <title>${reportTitle} - ${this.extractDomainName(report.meta.targetUrl)}</title>
     <style>${this.getStyles()}</style>
+    ${customCssLink}
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <div>
-                <h1>Compliance Executive Report</h1>
-                <p>Generated on ${generationDate} for <a href="${report.meta.targetUrl}" target="_blank" style="color:var(--accent-blue)">${report.meta.targetUrl}</a></p>
+            <div class="header-left">
+                ${logoHtml}
+                <div class="header-text">
+                    <h1>${reportTitle}</h1>
+                    <p>Generated on ${generationDate} for <a href="${report.meta.targetUrl}" target="_blank" style="color:var(--accent-blue)">${report.meta.targetUrl}</a></p>
+                </div>
             </div>
             <div class="health-score">
                 <div class="score-ring ${healthScore >= 90 ? 'score-good' : healthScore >= 70 ? 'score-warning' : 'score-critical'}">
@@ -1658,6 +2060,9 @@ export class HtmlReportGenerator {
                 </div>
             </div>
         </div>
+
+        <!-- Multi-Device Analysis -->
+        ${this.buildMultiDeviceSection(report)}
 
         <!-- Trend Chart -->
         <div class="trend-section">
@@ -1756,7 +2161,7 @@ export class HtmlReportGenerator {
         </div>
 
         <footer class="footer">
-            <div>Generated by Live Site Compliance Monitor</div>
+            <div>${this.branding.footerText || `Generated by ${this.branding.companyName}`}</div>
             <div>${report.meta.version || 'v1.0.0'}</div>
         </footer>
     </div>
@@ -1825,6 +2230,7 @@ export class HtmlReportGenerator {
             --accent-orange: #db6d28;
             --accent-blue: #58a6ff;
             --accent-purple: #a371f7;
+            --brand-primary: ${this.branding.primaryColor};
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1855,10 +2261,24 @@ export class HtmlReportGenerator {
             border: 1px solid var(--border-color);
         }
 
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand-logo {
+            max-height: 50px;
+            max-width: 200px;
+            object-fit: contain;
+        }
+
+        .header-text { display: flex; flex-direction: column; }
+
         .header h1 {
             font-size: 1.75rem;
             font-weight: 600;
-            background: linear-gradient(90deg, var(--text-primary), var(--accent-blue));
+            background: linear-gradient(90deg, var(--text-primary), var(--brand-primary, var(--accent-blue)));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -1869,6 +2289,18 @@ export class HtmlReportGenerator {
         .target-url { font-size: 0.85rem; color: var(--text-secondary); text-decoration: none; }
         .target-url:hover { color: var(--accent-blue); }
         .timestamp { font-size: 0.8rem; color: var(--text-muted); }
+        .active-scan-badge {
+            display: inline-block;
+            background: rgba(248, 81, 73, 0.15);
+            color: var(--accent-red);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border: 1px solid rgba(248, 81, 73, 0.4);
+            margin-top: 4px;
+            width: fit-content;
+        }
 
         /* Health Gauge */
         .health-gauge { width: 140px; height: 80px; }
@@ -2523,6 +2955,158 @@ export class HtmlReportGenerator {
             color: var(--accent-red);
         }
 
+        /* Vulnerability Intelligence Section */
+        .vuln-intel-section {
+            margin-top: 24px;
+            padding: 20px;
+            background: rgba(88, 166, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(88, 166, 255, 0.2);
+        }
+        .vuln-intel-section h3 {
+            margin: 0 0 8px 0;
+            color: var(--accent-blue);
+        }
+        .section-subtitle {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            margin-bottom: 16px;
+        }
+        .intel-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .intel-stat {
+            text-align: center;
+            padding: 16px 12px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .intel-stat.critical { border-color: var(--accent-red); background: rgba(248, 81, 73, 0.1); }
+        .intel-stat.high { border-color: #fd7e14; background: rgba(253, 126, 20, 0.1); }
+        .intel-stat.warning { border-color: var(--accent-yellow); background: rgba(255, 193, 7, 0.1); }
+        .intel-stat.danger { border-color: #dc3545; background: rgba(220, 53, 69, 0.1); }
+        .intel-value {
+            display: block;
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .intel-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+        .intel-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+            margin-top: 12px;
+        }
+        .intel-table th, .intel-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .intel-table th {
+            background: var(--bg-card);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+        .risk-score-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            color: white;
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+        .cvss-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .cvss-critical { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .cvss-high { background: rgba(253, 126, 20, 0.2); color: #fd7e14; }
+        .cvss-medium { background: rgba(255, 193, 7, 0.2); color: #d39e00; }
+        .cvss-low { background: rgba(40, 167, 69, 0.2); color: var(--accent-green); }
+        .cvss-none { background: var(--bg-card); color: var(--text-muted); }
+        .exploit-badge, .kev-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+        }
+        .exploit-badge.danger, .kev-badge.danger {
+            background: rgba(220, 53, 69, 0.2);
+            color: #dc3545;
+        }
+        .exploit-badge.safe, .kev-badge.safe {
+            background: var(--bg-card);
+            color: var(--text-muted);
+        }
+        .risk-factors {
+            margin: 0;
+            padding-left: 16px;
+            font-size: 0.75rem;
+        }
+        .risk-factors li {
+            margin: 2px 0;
+        }
+        .effort-badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .effort-low { background: rgba(40, 167, 69, 0.2); color: var(--accent-green); }
+        .effort-medium { background: rgba(255, 193, 7, 0.2); color: #d39e00; }
+        .effort-high { background: rgba(248, 81, 73, 0.2); color: var(--accent-red); }
+        .remediation-cell p {
+            margin: 4px 0;
+            font-size: 0.8rem;
+        }
+        .top-cves {
+            margin-top: 16px;
+        }
+        .cve-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .cve-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 2px solid;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: transform 0.2s;
+        }
+        .cve-chip:hover {
+            transform: translateY(-2px);
+        }
+        .chip-score {
+            background: rgba(0,0,0,0.2);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .no-intel {
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
         /* Score grid with 5 cards */
         .score-grid {
             grid-template-columns: repeat(5, 1fr);
@@ -2585,6 +3169,88 @@ export class HtmlReportGenerator {
             font-size: 0.85em;
             color: var(--text-primary);
             border: 1px solid var(--border-color);
+        }
+
+        /* Multi-Device Section */
+        .multi-device-section { margin-bottom: 24px; }
+        .device-grid {
+            display: grid;
+            /* Adaptive columns: min 280px */
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        .device-card {
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .device-card:hover { transform: translateY(-2px); border-color: var(--accent-blue); }
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+        .device-header h3 { margin: 0; font-size: 1.1rem; color: var(--text-primary); text-transform: capitalize; }
+        .device-score {
+            font-size: 1.2rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            background: var(--bg-primary);
+        }
+        .device-score.score-good { color: var(--accent-green); }
+        .device-score.score-warning { color: var(--accent-yellow); }
+        .device-score.score-critical { color: var(--accent-red); }
+
+        .device-metrics { margin-bottom: 16px; }
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+        }
+        .metric-val { font-weight: 600; }
+        .metric-val.good { color: var(--accent-green); }
+        .metric-val.bad { color: var(--accent-red); }
+        
+        .device-stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+        }
+        .device-stats .bad { color: var(--accent-red); font-weight: 600; }
+
+        .device-screenshot {
+            margin-top: 16px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            position: relative;
+        }
+        .device-screenshot img {
+            width: 100%;
+            height: auto;
+            display: block;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .device-screenshot img:hover { opacity: 0.9; }
+
+        @media print {
+            .device-card { break-inside: avoid; }
+            .score-section, .trend-section, .remediation-section { break-inside: avoid; page-break-inside: avoid; }
+            .header { break-after: avoid; }
+            .footer { break-before: avoid; }
         }
 
         /* Trend Chart */

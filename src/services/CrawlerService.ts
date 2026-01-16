@@ -352,6 +352,26 @@ export class CrawlerService {
     }
 
     /**
+     * Atomic page counter for thread-safe parallel crawling
+     */
+    private pageCounter = { count: 1 };
+
+    /**
+     * Thread-safe increment of page counter
+     * Returns the new count after increment
+     */
+    private incrementPageCount(): number {
+        return ++this.pageCounter.count;
+    }
+
+    /**
+     * Get current page count (thread-safe read)
+     */
+    private getPageCount(): number {
+        return this.pageCounter.count;
+    }
+
+    /**
      * Process URLs in parallel using bounded concurrency
      */
     private async parallelCrawl(): Promise<void> {
@@ -359,15 +379,16 @@ export class CrawlerService {
             throw new Error('Concurrency limiter not initialized');
         }
 
-        let pageCount = 1; // Homepage already visited
+        // Reset page counter (homepage already visited = 1)
+        this.pageCounter.count = 1;
         const maxPages = this.linkConfig.maxPages;
 
         // Process queue with dynamic addition
-        while (this.urlQueue.length > 0 && pageCount < maxPages) {
+        while (this.urlQueue.length > 0 && this.getPageCount() < maxPages) {
             // Take a batch of URLs to process
             const batchSize = Math.min(
                 this.urlQueue.length,
-                maxPages - pageCount,
+                maxPages - this.getPageCount(),
                 this.linkConfig.concurrency * 2 // Process 2x concurrency at a time
             );
 
@@ -385,13 +406,13 @@ export class CrawlerService {
 
             if (urlsToProcess.length === 0) continue;
 
-            logger.info(`Processing batch of ${urlsToProcess.length} URLs (${pageCount}/${maxPages} total)`);
+            logger.info(`Processing batch of ${urlsToProcess.length} URLs (${this.getPageCount()}/${maxPages} total)`);
 
             // Create parallel tasks with concurrency limit
             const tasks = urlsToProcess.map(url =>
                 this.limit!(async () => {
-                    pageCount++;
-                    const currentPage = pageCount;
+                    // Atomically increment and capture current page number
+                    const currentPage = this.incrementPageCount();
 
                     try {
                         logger.info(`  [${currentPage}/${maxPages}] Crawling: ${url}`);
@@ -407,7 +428,7 @@ export class CrawlerService {
                         }
 
                         // Discover new links from this page
-                        if (result.linksFound > 0 && pageCount < maxPages) {
+                        if (result.linksFound > 0 && this.getPageCount() < maxPages) {
                             // Links are already added to queue during visitPageParallel
                         }
 

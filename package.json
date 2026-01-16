@@ -1,6 +1,6 @@
 {
     "name": "live-site-compliance-monitor",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A read-only automated agent that navigates live production websites to verify user flows, performance metrics, and security headers",
     "main": "dist/index.js",
     "scripts": {
@@ -9,7 +9,20 @@
         "dev": "ts-node src/index.ts",
         "audit": "ts-node src/index.ts --full-audit",
         "lint": "eslint src/**/*.ts",
-        "clean": "rimraf dist",
+        "lint:fix": "eslint src/**/*.ts --fix",
+        "typecheck": "tsc --noEmit",
+        "clean": "rimraf dist coverage test-results playwright-report",
+        "test": "jest",
+        "test:watch": "jest --watch",
+        "test:coverage": "jest --coverage",
+        "test:integration": "npx playwright test",
+        "test:integration:ui": "npx playwright test --ui",
+        "test:integration:headed": "npx playwright test --headed",
+        "test:unit-integration": "npx playwright test --project=unit-integration",
+        "test:browser": "npx playwright test --project=chromium",
+        "test:e2e": "npx playwright test --project=chromium",
+        "test:zap": "npx playwright test --project=e2e-with-zap",
+        "test:all": "npm run test && npm run test:integration",
         "report": "npx playwright show-report",
         "report:open": "npx playwright show-report --host 0.0.0.0"
     },
@@ -28,6 +41,7 @@
         "@types/pixelmatch": "^5.2.6",
         "@types/pngjs": "^6.0.5",
         "chalk": "^4.1.2",
+        "chrome-launcher": "^1.1.0",
         "dotenv": "^16.3.1",
         "lighthouse": "^11.4.0",
         "p-limit": "^5.0.0",
@@ -37,11 +51,15 @@
         "winston": "^3.11.0"
     },
     "devDependencies": {
+        "@playwright/test": "^1.40.0",
+        "@types/jest": "^29.5.11",
         "@types/node": "^20.10.0",
         "@typescript-eslint/eslint-plugin": "^6.13.0",
         "@typescript-eslint/parser": "^6.13.0",
         "eslint": "^8.55.0",
+        "jest": "^29.7.0",
         "rimraf": "^5.0.5",
+        "ts-jest": "^29.1.1",
         "ts-node": "^10.9.2",
         "typescript": "^5.3.0"
     },

@@ -1,0 +1,192 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test
+
+  build-and-publish:
+    name: Build and Publish
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build --if-present
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Extract version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+            cognostra/stealth-compliance-monitor
+          tags: |
+            type=semver,pattern={{version}},value=v${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}},value=v${{ steps.version.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event.inputs.prerelease != 'true' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          # Extract changelog for this version
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          # Create release notes file
+          cat << 'EOF' > release_notes.md
+          ## 🎉 Stealth Compliance Monitor v${{ steps.version.outputs.version }}
+          
+          Enterprise-grade web compliance and security auditing platform.
+          
+          ### 📦 Installation
+          
+          **npm:**
+          ```bash
+          npm install -g stealth-compliance-monitor
+          ```
+          
+          **Docker:**
+          ```bash
+          docker pull ghcr.io/cognostra/stealth-compliance-monitor:${{ steps.version.outputs.version }}
+          ```
+          
+          **Docker Compose:**
+          ```bash
+          curl -O https://raw.githubusercontent.com/Cognostra/Stealth-Compliance-Monitor/v${{ steps.version.outputs.version }}/docker-compose.yml
+          docker compose up -d
+          ```
+          
+          ### 📖 Documentation
+          
+          - [Full Documentation](https://cognostra.github.io/Stealth-Compliance-Monitor/)
+          - [Quick Start Guide](https://github.com/Cognostra/Stealth-Compliance-Monitor#installation)
+          - [Configuration Reference](https://github.com/Cognostra/Stealth-Compliance-Monitor#configuration)
+          
+          ### 🔗 Links
+          
+          - [Changelog](https://github.com/Cognostra/Stealth-Compliance-Monitor/blob/main/CHANGELOG.md)
+          - [Contributing Guide](https://github.com/Cognostra/Stealth-Compliance-Monitor/blob/main/CONTRIBUTING.md)
+          - [Security Policy](https://github.com/Cognostra/Stealth-Compliance-Monitor/blob/main/SECURITY.md)
+          
+          ---
+          
+          **Full Changelog**: https://github.com/Cognostra/Stealth-Compliance-Monitor/compare/v0.9.0...v${{ steps.version.outputs.version }}
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: v${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ inputs.prerelease || false }}
+          generate_release_notes: true
+          files: |
+            LICENSE
+            CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    name: Notify
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Send notification
+        run: |
+          echo "🎉 Release v${{ needs.build-and-publish.outputs.version }} published successfully!"
+          # Add webhook notifications here if configured
+          # curl -X POST "${{ secrets.WEBHOOK_URL }}" ...

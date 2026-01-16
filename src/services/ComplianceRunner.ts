@@ -6,13 +6,31 @@ import { AuditService } from './AuditService';
 import { CrawlerService } from './CrawlerService';
 import { DataIntegrityService } from './DataIntegrityService';
 import { ReportGenerator } from './ReportGenerator';
-import { HtmlReportGenerator } from './HtmlReportGenerator';
+import { HtmlReportGenerator, BrandingConfig } from './HtmlReportGenerator';
 import { SecurityAssessment } from './SecurityAssessment';
+import { ZapActiveScanner, ActiveScanResult } from './ZapActiveScanner';
+import { ApiEndpointTester, ApiTestResult } from './ApiEndpointTester';
+import { VulnIntelligenceService, EnrichedVulnerability, IntelligenceSummary } from './VulnIntelligenceService';
+import { CustomCheckLoader, CustomCheckResult } from '../core/CustomCheckLoader';
 import { logger, logSection, logSuccess, logFailure } from '../utils/logger';
 import { ComplianceConfig } from '../config/compliance.config';
 import { FleetSiteResult } from './FleetReportGenerator';
 import { SiemLogger } from './SiemLogger';
 import { persistenceService } from './PersistenceService';
+
+interface DeviceScanResult {
+    device: string;
+    auditResult: any;
+    crawlResult: any;
+    integrityResult: any;
+    customCheckResults: CustomCheckResult[];
+    supabaseIssues: any[];
+    vulnerableLibraries: any[];
+    securityResult: any;
+    networkIncidents: any[];
+    leakedSecrets: any[];
+    screenshotPath?: string;
+}
 
 export class ComplianceRunner {
     private config: ComplianceConfig;
@@ -22,54 +40,384 @@ export class ComplianceRunner {
     }
 
     async run(targetUrl: string): Promise<FleetSiteResult> {
-        // Initialize services
-        const browserService = new BrowserService();
-        const authService = new AuthService(browserService);
-        const crawlerService = new CrawlerService(browserService, { ...this.config, targetUrl: targetUrl } as any);
-        const integrityService = new DataIntegrityService(browserService);
-        const auditService = new AuditService();
-        const reportGenerator = new ReportGenerator();
-        const htmlReportGenerator = new HtmlReportGenerator(this.config.REPORTS_DIR);
+        const startTime = Date.now();
+        let finalStatus: 'pass' | 'fail' | 'warning' = 'fail';
+        let healthScore = 0;
+        let htmlReportPath = '';
+        let activeScanResult: ActiveScanResult | null = null;
+        let apiTestResult: ApiTestResult | null = null;
 
+        // Define devices to scan
+        const devicesToScan = this.config.DEVICES && this.config.DEVICES.length > 0
+            ? this.config.DEVICES
+            : ['desktop'];
+
+        logger.info(`🎯 Target: ${targetUrl}`);
+        logger.info(`📱 Devices to scan: ${devicesToScan.join(', ')}`);
+
+        // Step 0: Initialize WAL
+        await persistenceService.init(targetUrl);
+
+        // Step 1: Active ZAP Scanning (Global, run once)
+        if (this.config.activeScanning) {
+            logSection('Active ZAP Scanning (Spider + Attack)');
+            const activeScanner = new ZapActiveScanner(this.config, logger);
+            try {
+                // Determine bypass auth for scanner if needed (not supported in helper yet)
+                activeScanResult = await activeScanner.runFullActiveScan(targetUrl);
+
+                if (activeScanResult.activeAlerts.length > 0) {
+                    logger.warn(`⚠️ Active scan found ${activeScanResult.activeAlerts.length} vulnerabilities`);
+                    for (const alert of activeScanResult.activeAlerts) {
+                        await persistenceService.log('security_finding', {
+                            ...alert,
+                            source: 'zap-active',
+                            severity: alert.risk
+                        });
+                    }
+                }
+            } catch (activeError) {
+                logger.error(`Active scanning failed: ${activeError instanceof Error ? activeError.message : String(activeError)}`);
+            } finally {
+                await activeScanner.cleanup();
+            }
+        }
+
+        // Step 1.5: API Endpoint Testing (Global, run once)
+        if (this.config.enableApiTesting) {
+            logSection('API Endpoint Security Testing');
+            const apiTester = new ApiEndpointTester(this.config, logger, this.config.activeSecurity);
+            try {
+                await apiTester.initialize();
+
+                // Load from OpenAPI spec if provided
+                if (this.config.apiSpecPath && this.config.apiSpecPath.length > 0) {
+                    await apiTester.loadFromOpenApiSpec(this.config.apiSpecPath);
+                }
+
+                // Add manual endpoints if provided
+                if (this.config.apiEndpoints && this.config.apiEndpoints.length > 0) {
+                    const manualEndpoints = this.config.apiEndpoints.map(ep => ({
+                        method: 'GET' as const,
+                        url: ep.startsWith('http') ? ep : new URL(ep, targetUrl).toString(),
+                        source: 'manual' as const,
+                    }));
+                    apiTester.addEndpoints(manualEndpoints);
+                }
+
+                // Run tests
+                const authToken = this.config.authBypass?.tokenValue;
+                apiTestResult = await apiTester.runTests(authToken);
+
+                // Log findings
+                if (apiTestResult.findings.length > 0) {
+                    logger.warn(`🔌 API testing found ${apiTestResult.findings.length} issues`);
+                    for (const finding of apiTestResult.findings) {
+                        await persistenceService.log('security_finding', {
+                            ...finding,
+                            source: 'api-tester',
+                        });
+                    }
+                }
+            } catch (apiError) {
+                logger.error(`API testing failed: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
+            } finally {
+                await apiTester.dispose();
+            }
+        }
+
+        // Step 2: Multi-Device Scanning Loop
+        const deviceResults: DeviceScanResult[] = [];
+
+        for (const device of devicesToScan) {
+            try {
+                const result = await this.scanDevice(targetUrl, device);
+                deviceResults.push(result);
+            } catch (error) {
+                logger.error(`Failed to scan device ${device}: ${error}`);
+            }
+        }
+
+        if (deviceResults.length === 0) {
+            logFailure('All device scans failed');
+            return {
+                url: targetUrl,
+                domain: targetUrl,
+                healthScore: 0,
+                reportPath: '#',
+                criticalIssues: 0,
+                status: 'fail'
+            };
+        }
+
+        // Use the first result (usually desktop) as the primary result for top-level report sections
+        const primaryResult = deviceResults[0];
+
+        // Step 3: Vulnerability Intelligence Enrichment
+        let vulnIntelResults: {
+            libraries: EnrichedVulnerability[];
+            alerts: EnrichedVulnerability[];
+            summary: IntelligenceSummary;
+        } | null = null;
+
+        if (this.config.enableVulnIntel !== false) {
+            logSection('Vulnerability Intelligence Enrichment');
+            const vulnIntelService = new VulnIntelligenceService({
+                nvdApiKey: this.config.nvdApiKey,
+                enrichExploits: this.config.vulnIntelExploits !== false,
+                enrichKev: this.config.vulnIntelKev !== false,
+                enrichCwe: this.config.vulnIntelCwe !== false,
+                cacheTtlMinutes: this.config.vulnIntelCacheTtl || 1440,
+                cacheFilePath: this.config.vulnIntelCachePath || './cache/vuln-intel-cache.json',
+                useNvdApi: true,
+                useCirclApi: true,
+            });
+
+            try {
+                // Collect all vulnerable libraries across devices
+                const allVulnLibraries = deviceResults.flatMap(r => r.vulnerableLibraries);
+
+                // Collect all security alerts
+                const allSecurityAlerts = [
+                    ...(primaryResult.auditResult.security_alerts || []),
+                    ...(activeScanResult?.activeAlerts || []),
+                    ...(activeScanResult?.passiveAlerts || []),
+                ];
+
+                vulnIntelResults = await vulnIntelService.enrichAll(
+                    allVulnLibraries,
+                    allSecurityAlerts
+                );
+
+                // Log enriched findings to WAL
+                for (const enriched of [...vulnIntelResults.libraries, ...vulnIntelResults.alerts]) {
+                    if (enriched.riskScore >= 70) {
+                        await persistenceService.log('security_finding', {
+                            type: 'enriched_vulnerability',
+                            cveId: enriched.cveId,
+                            riskScore: enriched.riskScore,
+                            cvss: enriched.cvss,
+                            exploit: enriched.exploit,
+                            kev: enriched.knownExploitedVuln,
+                            riskFactors: enriched.riskFactors,
+                        });
+                    }
+                }
+
+                logger.info(`🔍 Enriched ${vulnIntelResults.summary.totalFindings} findings`);
+                logger.info(`   KEV hits: ${vulnIntelResults.summary.inKev}, Exploits: ${vulnIntelResults.summary.withExploits}`);
+            } catch (intelError) {
+                logger.warn(`Vulnerability intelligence enrichment failed: ${intelError instanceof Error ? intelError.message : String(intelError)}`);
+            }
+        }
+
+        // Aggregate findings for summary
+        const totalSecurityCritical = deviceResults.reduce((sum, res) =>
+            sum + ((res.securityResult?.summary.critical || 0) + (res.securityResult?.summary.high || 0)), 0);
+
+        const totalViolations = deviceResults.reduce((sum, res) =>
+            sum + res.customCheckResults.reduce((acc, r) => acc + r.violations.length, 0), 0);
+
+        // Count API critical/high findings
+        const apiCriticalFindings = (apiTestResult?.summary.critical || 0) + (apiTestResult?.summary.high || 0);
+
+        // Calculate Merged Health Score
+        healthScore = Math.round(
+            (primaryResult.auditResult.summary.performanceScore +
+                primaryResult.auditResult.summary.accessibilityScore +
+                primaryResult.auditResult.summary.seoScore) / 3
+        );
+
+        if (totalSecurityCritical > 0 || apiCriticalFindings > 0 || (primaryResult.auditResult.summary.highRiskAlerts > 0)) {
+            healthScore = Math.max(0, healthScore - 20);
+            finalStatus = 'fail';
+        } else if (healthScore >= 90) {
+            finalStatus = 'pass';
+        } else {
+            finalStatus = 'warning';
+        }
+
+        // Generate Report
+        const report = {
+            meta: {
+                version: '1.0.0',
+                generatedAt: new Date().toISOString(),
+                targetUrl: targetUrl,
+                duration: Date.now() - startTime,
+                activeScanning: this.config.activeScanning || false,
+            },
+            authentication: { success: true, duration: 0 },
+            crawl: primaryResult.crawlResult, // Primary crawl
+            integrity: primaryResult.integrityResult,
+            network_incidents: primaryResult.networkIncidents,
+            leaked_secrets: primaryResult.leakedSecrets,
+            supabase_issues: primaryResult.supabaseIssues,
+            vulnerable_libraries: primaryResult.vulnerableLibraries,
+            security_assessment: primaryResult.securityResult,
+            lighthouse: primaryResult.auditResult.lighthouse,
+            security_alerts: primaryResult.auditResult.security_alerts,
+            // Active scan (common)
+            active_scan: activeScanResult ? {
+                enabled: true,
+                spiderUrls: activeScanResult.spiderUrls,
+                passiveAlerts: activeScanResult.passiveAlerts,
+                activeAlerts: activeScanResult.activeAlerts,
+                duration: activeScanResult.duration,
+                completed: activeScanResult.completed
+            } : null,
+            // Custom checks (Primary)
+            custom_checks: primaryResult.customCheckResults,
+            ignored_alerts: primaryResult.auditResult.ignored_alerts || [],
+            // API testing results
+            api_testing: apiTestResult ? {
+                enabled: true,
+                endpointsTested: apiTestResult.endpointsTested,
+                endpointsDiscovered: apiTestResult.endpointsDiscovered,
+                findings: apiTestResult.findings,
+                duration: apiTestResult.duration,
+                summary: apiTestResult.summary
+            } : null,
+            // Vulnerability Intelligence
+            vuln_intelligence: vulnIntelResults ? {
+                enabled: true,
+                enrichedLibraries: vulnIntelResults.libraries,
+                enrichedAlerts: vulnIntelResults.alerts,
+                summary: vulnIntelResults.summary,
+            } : null,
+            // Multi-device Results
+            multi_device: deviceResults.map(r => ({
+                device: r.device,
+                lighthouse: r.auditResult.lighthouse,
+                crawlSummary: {
+                    pagesVisited: r.crawlResult.pageResults.length,
+                    failedPages: r.crawlResult.failedPages
+                },
+                screenshotPath: r.screenshotPath
+            })),
+            summary: {
+                ...primaryResult.auditResult.summary,
+                crawlPagesInvalid: primaryResult.crawlResult.failedPages,
+                crawlPagesSuspicious: primaryResult.crawlResult.suspiciousPages,
+                integrityFailures: primaryResult.integrityResult.failed,
+                securityCritical: primaryResult.securityResult?.summary.critical || 0,
+                securityHigh: primaryResult.securityResult?.summary.high || 0,
+                supabaseIssues: primaryResult.supabaseIssues.length,
+                vulnerableLibraries: primaryResult.vulnerableLibraries.length,
+                activeAlerts: activeScanResult?.activeAlerts.length || 0,
+                customViolations: totalViolations,
+                apiFindings: apiTestResult?.findings.length || 0,
+                apiCritical: apiTestResult?.summary.critical || 0,
+                apiHigh: apiTestResult?.summary.high || 0,
+                // Vulnerability Intelligence Summary
+                vulnIntelEnriched: vulnIntelResults?.summary.totalFindings || 0,
+                vulnIntelCritical: vulnIntelResults?.summary.bySeverity.CRITICAL || 0,
+                vulnIntelHigh: vulnIntelResults?.summary.bySeverity.HIGH || 0,
+                vulnIntelWithExploits: vulnIntelResults?.summary.withExploits || 0,
+                vulnIntelInKev: vulnIntelResults?.summary.inKev || 0,
+                vulnIntelAvgRisk: vulnIntelResults?.summary.averageRiskScore || 0,
+            },
+        };
+
+        // Build branding config from environment
+        const brandingConfig: Partial<BrandingConfig> = {
+            companyName: this.config.BRAND_COMPANY_NAME,
+            logoUrl: this.config.BRAND_LOGO_URL || undefined,
+            primaryColor: this.config.BRAND_PRIMARY_COLOR,
+            customCssUrl: this.config.BRAND_CUSTOM_CSS_URL || undefined,
+            footerText: this.config.BRAND_FOOTER_TEXT || undefined,
+            reportTitle: this.config.BRAND_REPORT_TITLE || undefined,
+        };
+
+        const htmlReportGenerator = new HtmlReportGenerator(this.config.REPORTS_DIR, brandingConfig);
+
+        // Save Reports
+        const domain = new URL(targetUrl).hostname;
+        const domainReportDir = path.join(this.config.REPORTS_DIR, domain);
+
+        if (!fs.existsSync(domainReportDir)) {
+            fs.mkdirSync(domainReportDir, { recursive: true });
+        }
+
+        htmlReportPath = await htmlReportGenerator.generate(report as any);
+
+        // Generate PDF
+        try {
+            const pdfReportPath = htmlReportPath.replace('.html', '.pdf');
+            await htmlReportGenerator.generatePdf(htmlReportPath, pdfReportPath);
+            logger.info(`PDF Report generated: ${pdfReportPath}`);
+        } catch (pdfError) {
+            logger.warn(`PDF generation failed: ${pdfError}`);
+        }
+
+        // SIEM Log (Use Primary Findings)
+        if (this.config.siem?.enabled) {
+            if (primaryResult.securityResult?.findings) {
+                for (const finding of primaryResult.securityResult.findings) {
+                    if (['critical', 'high'].includes(finding.severity.toLowerCase())) {
+                        await SiemLogger.logVulnerability({
+                            id: finding.id,
+                            severity: finding.severity,
+                            description: finding.description,
+                            targetUrl: finding.endpoint || targetUrl,
+                            complianceTags: []
+                        });
+                    }
+                }
+            }
+        }
+
+        logSuccess(`Scan complete for ${targetUrl}`);
+
+        return {
+            url: targetUrl,
+            domain: domain,
+            healthScore: healthScore,
+            reportPath: path.relative(this.config.REPORTS_DIR, htmlReportPath),
+            criticalIssues: (report.summary.securityCritical || 0) + report.summary.highRiskAlerts,
+            status: finalStatus
+        };
+    }
+
+    private async scanDevice(targetUrl: string, device: string): Promise<DeviceScanResult> {
+        logSection(`Starting Scan for Device: ${device}`);
+
+        const browserService = new BrowserService();
         // Override targetUrl in config for this run
         const runConfig = { ...this.config, targetUrl: targetUrl };
         if (runConfig.authBypass) {
-            // We might need to adjust auth domain if multiple sites + sso
-            // For now assume auth config is global or per-site config needs enhancement
             try {
                 const url = new URL(targetUrl);
                 runConfig.authBypass.domain = url.hostname;
             } catch { }
         }
 
-        const startTime = Date.now();
+        const authService = new AuthService(browserService);
+        const crawlerService = new CrawlerService(browserService, { ...runConfig } as any);
+        const integrityService = new DataIntegrityService(browserService);
+        const auditService = new AuditService();
+
         let auditResult: any = {};
-        let securityCritical = 0;
-        let finalStatus: 'pass' | 'fail' | 'warning' = 'fail';
-        let healthScore = 0;
-        let htmlReportPath = '';
+        let securityResult: any = null;
+        let customCheckResults: CustomCheckResult[] = [];
+        let screenshotPath: string | undefined;
 
         try {
-            logSection(`Starting Scan: ${targetUrl}`);
-
-            // Step 0: Initialize WAL
-            await persistenceService.init(targetUrl);
-
-            // Step 1: Initialize Browser
+            // Step 1: Init Browser with Device
             await browserService.initialize({
                 headless: true,
-                useProxy: runConfig.activeSecurity
+                useProxy: runConfig.activeSecurity,
+                deviceName: device
             });
 
-            // Step 2: Authentication
+            // Step 2: Auth
             const authResult = await authService.login(targetUrl);
-            await persistenceService.log('custom', { event: 'auth_complete', success: authResult.success });
+            await persistenceService.log('custom', { event: 'auth_complete', device, success: authResult.success });
 
-            // Step 3: Run Audits
+            // Step 3: Run Audit (Lighthouse)
             if (runConfig.activeSecurity) {
-                auditResult = await auditService.runFullAudit();
+                auditResult = await auditService.runFullAudit(targetUrl, device);
             } else {
-                const lighthouseResult = await auditService.runLighthouseAudit(targetUrl);
+                const lighthouseResult = await auditService.runLighthouseAudit(targetUrl, device);
                 auditResult = {
                     lighthouse: lighthouseResult,
                     security_alerts: [],
@@ -88,159 +436,87 @@ export class ComplianceRunner {
             }
             await persistenceService.log('security_finding', auditResult.security_alerts);
 
-            // Step 4: Deep Crawl
+            // Step 4: Crawl
             const crawlResult = await crawlerService.crawl();
-            await persistenceService.log('page_result', crawlResult.pageResults);
 
-            // Step 5: Data Integrity
+            // Take a screenshot of main page for report
+            const page = browserService.getPage();
+            if (page) {
+                try {
+                    const sc = await browserService.screenshot(`report-${device}`);
+                    screenshotPath = sc.path;
+                } catch { }
+            }
+
+            // Step 5: Integrity
             const visitedUrls = crawlerService.getVisitedUrls();
             const integrityResult = await integrityService.runIntegrityChecks(visitedUrls);
-            await persistenceService.log('custom', { event: 'integrity_complete', ...integrityResult });
 
-            // Step 5.5: Supabase & Library Scan
+            // Step 5.5: Supabase & Library
             await browserService.runSupabaseSecurityTests();
             const supabaseIssues = browserService.getSupabaseIssues();
-            for (const issue of supabaseIssues) await persistenceService.log('supabase_issue', issue);
 
             await browserService.scanPageLibraries();
             const vulnerableLibraries = browserService.getVulnerableLibraries();
-            for (const lib of vulnerableLibraries) await persistenceService.log('vuln_library', lib);
 
-            // Step 6: Security Assessment
+            // Step 6: Security Assessment (Black Box)
             const securityAssessment = new SecurityAssessment();
-            const page = browserService.getPage();
-            let securityResult = null;
             if (page) {
-                securityResult = await securityAssessment.assess(page, targetUrl, visitedUrls);
-                securityCritical = (securityResult.summary.critical || 0) + (securityResult.summary.high || 0);
-
-                if (securityResult.findings) {
-                    for (const finding of securityResult.findings) {
-                        await persistenceService.log('security_assessment', finding);
-                    }
-                }
-            }
-
-            // Step 7: Report Generation
-            const report = {
-                meta: {
-                    version: '1.0.0',
-                    generatedAt: new Date().toISOString(),
-                    targetUrl: targetUrl,
-                    duration: Date.now() - startTime,
-                },
-                authentication: { success: true, duration: 0 }, // Simplified for runner
-                crawl: crawlResult,
-                integrity: integrityResult,
-                network_incidents: browserService.getNetworkIncidents(),
-                leaked_secrets: browserService.getLeakedSecrets(),
-                supabase_issues: supabaseIssues,
-                vulnerable_libraries: vulnerableLibraries,
-                security_assessment: securityResult,
-                lighthouse: auditResult.lighthouse,
-                security_alerts: auditResult.security_alerts,
-                ignored_alerts: auditResult.ignored_alerts || [],
-                summary: {
-                    ...auditResult.summary,
-                    crawlPagesInvalid: crawlResult.failedPages,
-                    crawlPagesSuspicious: crawlResult.suspiciousPages,
-                    integrityFailures: integrityResult.failed,
-                    securityCritical: securityResult?.summary.critical || 0,
-                    securityHigh: securityResult?.summary.high || 0,
-                    supabaseIssues: supabaseIssues.length,
-                    vulnerableLibraries: vulnerableLibraries.length,
-                },
-            };
-
-            // Calculate Health Score (simplified logic)
-            healthScore = Math.round(
-                (report.summary.performanceScore +
-                    report.summary.accessibilityScore +
-                    report.summary.seoScore) / 3
-            );
-
-            if (securityCritical > 0 || report.summary.highRiskAlerts > 0) {
-                healthScore = Math.max(0, healthScore - 20);
-                finalStatus = 'fail';
-            } else if (healthScore >= 90) {
-                finalStatus = 'pass';
-            } else {
-                finalStatus = 'warning';
-            }
-
-            // Save Reports
-            const domain = new URL(targetUrl).hostname;
-            const domainReportDir = path.join(this.config.REPORTS_DIR, domain);
-
-            if (!fs.existsSync(domainReportDir)) {
-                fs.mkdirSync(domainReportDir, { recursive: true });
-            }
-
-            // Hack: Subclass check or modify HtmlReportGenerator to accept output dir per run? 
-            // HtmlReportGenerator takes reportsDir in constructor.
-            // We instantiated it with default. Let's make sure it saves nicely or we rename.
-            // Actually HtmlReportGenerator generates output based on domain. 
-            // Let's use it as is, but we might want to organize them into folders.
-
-            htmlReportPath = await htmlReportGenerator.generate(report as any);
-            const pdfReportPath = htmlReportPath.replace('.html', '.pdf');
-            await htmlReportGenerator.generatePdf(htmlReportPath, pdfReportPath);
-
-            // SIEM Integration: Forward Critical/High Security Findings
-            if (this.config.siem?.enabled) {
-                // 1. Black Box Security Findings
-                if (securityResult && securityResult.findings) {
-                    for (const finding of securityResult.findings) {
-                        if (['critical', 'high'].includes(finding.severity.toLowerCase())) {
-                            await SiemLogger.logVulnerability({
-                                id: finding.id,
-                                severity: finding.severity,
-                                description: finding.description,
-                                targetUrl: finding.endpoint || targetUrl,
-                                complianceTags: [] // Will be enriched by logger if empty
-                            });
+                try {
+                    securityResult = await securityAssessment.assess(page, targetUrl, visitedUrls);
+                    if (securityResult.findings) {
+                        for (const finding of securityResult.findings) {
+                            await persistenceService.log('security_assessment', { ...finding, device });
                         }
                     }
+                } catch (secError) {
+                    logger.warn(`Security assessment failed: ${secError instanceof Error ? secError.message : String(secError)}`);
                 }
+            }
 
-                // 2. ZAP / Audit Alerts
-                if (auditResult.security_alerts) {
-                    for (const alert of auditResult.security_alerts) {
-                        const risk = alert.risk ? alert.risk.toLowerCase() : 'low';
-                        if (['critical', 'high'].includes(risk)) {
-                            await SiemLogger.logVulnerability({
-                                id: alert.alert ? alert.alert.toLowerCase().replace(/\s+/g, '-') : 'zap-alert',
-                                severity: risk,
-                                description: alert.description,
-                                targetUrl: targetUrl,
-                                complianceTags: []
+            // Step 7: Custom Checks
+            if (runConfig.enableCustomChecks) {
+                const customCheckLoader = new CustomCheckLoader(logger, runConfig.customChecksDir);
+                if (page) {
+                    try {
+                        const checkCount = await customCheckLoader.loadChecks();
+                        if (checkCount > 0) {
+                            customCheckResults = await customCheckLoader.runChecks(page, {
+                                targetUrl,
+                                currentUrl: page.url(),
+                                visitedUrls,
+                                logger,
+                                profile: this.config.name
                             });
+                            // Log violations
+                            for (const res of customCheckResults) {
+                                if (!res.passed) {
+                                    for (const v of res.violations) {
+                                        await persistenceService.log('custom_check_violation', { ...v, device });
+                                    }
+                                }
+                            }
                         }
+                    } catch (checkError) {
+                        logger.error(`Custom checks failed: ${checkError instanceof Error ? checkError.message : String(checkError)}`);
                     }
                 }
             }
 
-            logSuccess(`Scan complete for ${targetUrl}`);
-
             return {
-                url: targetUrl,
-                domain: domain,
-                healthScore: healthScore,
-                reportPath: path.relative(this.config.REPORTS_DIR, htmlReportPath),
-                criticalIssues: securityCritical + report.summary.highRiskAlerts,
-                status: finalStatus
+                device,
+                auditResult,
+                crawlResult,
+                integrityResult,
+                customCheckResults,
+                supabaseIssues,
+                vulnerableLibraries,
+                securityResult,
+                networkIncidents: browserService.getNetworkIncidents(),
+                leakedSecrets: browserService.getLeakedSecrets(),
+                screenshotPath
             };
 
-        } catch (error) {
-            logFailure(`Scan failed for ${targetUrl}: ${error}`);
-            return {
-                url: targetUrl,
-                domain: targetUrl,
-                healthScore: 0,
-                reportPath: '#',
-                criticalIssues: 0,
-                status: 'fail'
-            };
         } finally {
             await browserService.close();
             await auditService.cleanup();

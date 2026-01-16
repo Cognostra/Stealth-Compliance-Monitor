@@ -66,7 +66,16 @@ export class ComplianceRunner {
 
         // Initialize services
         logStep(1, 3, 'Initializing browser...');
-        await this.browserService.initialize();
+        
+        // Pass debug options to browser service
+        const browserOptions: { slowMo?: number; devtools?: boolean } = {};
+        if ((this.config as any).DEBUG_SLOW_MO) {
+            browserOptions.slowMo = (this.config as any).DEBUG_SLOW_MO;
+        }
+        if ((this.config as any).DEBUG_DEVTOOLS) {
+            browserOptions.devtools = (this.config as any).DEBUG_DEVTOOLS;
+        }
+        await this.browserService.initialize(browserOptions);
 
         logStep(2, 3, 'Initializing ZAP (passive mode)...');
         await this.zapService.initialize();
@@ -155,6 +164,15 @@ export class ComplianceRunner {
             return await this.lighthouseService.runAudit(this.config.LIVE_URL);
         } catch (error) {
             logger.error('Lighthouse audit failed', { error });
+            
+            // Capture error state if debug mode is enabled
+            if ((this.config as any).DEBUG_CAPTURE_CONSOLE) {
+                await this.browserService.captureErrorState('lighthouse-audit-failure');
+            }
+            if ((this.config as any).DEBUG_PAUSE_ON_FAILURE) {
+                await this.browserService.debugPause('Lighthouse audit failed - pausing for debugging');
+            }
+            
             return {
                 performance: this.getDefaultPerformanceMetrics(),
                 accessibility: this.getDefaultAccessibilityMetrics(),

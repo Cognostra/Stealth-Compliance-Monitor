@@ -55,6 +55,62 @@ export interface EnvConfig {
     SIEM_WEBHOOK_URL?: string;
     /** SIEM Log File Path */
     SIEM_LOG_PATH?: string;
+    /** ZAP API Key for secure access (optional, disabled by default for dev) */
+    ZAP_API_KEY?: string;
+    /** Enable Custom Compliance Checks */
+    CUSTOM_CHECKS_ENABLED: boolean;
+    /** Directory for Custom Check Scripts */
+    CUSTOM_CHECKS_DIR: string;
+    /** Devices to emulate (e.g. ['desktop', 'iPhone 14']) */
+    DEVICES: string[];
+    /** Enable API Endpoint Testing */
+    API_TESTING_ENABLED: boolean;
+    /** Path to OpenAPI/Swagger spec file or URL */
+    API_SPEC_PATH?: string;
+    /** Additional API endpoints to test (comma-separated) */
+    API_ENDPOINTS?: string;
+    
+    // Debug Mode Options
+    /** Run browser in headed mode (visible) */
+    DEBUG_HEADED: boolean;
+    /** Slow down actions by this many ms (for debugging) */
+    DEBUG_SLOW_MO: number;
+    /** Enable devtools on launch */
+    DEBUG_DEVTOOLS: boolean;
+    /** Pause on failures for debugging */
+    DEBUG_PAUSE_ON_FAILURE: boolean;
+    /** Capture console logs on errors */
+    DEBUG_CAPTURE_CONSOLE: boolean;
+    
+    // Vulnerability Intelligence Options
+    /** Enable vulnerability intelligence enrichment */
+    VULN_INTEL_ENABLED: boolean;
+    /** NVD API key for higher rate limits (optional) */
+    NVD_API_KEY?: string;
+    /** Enable exploit database cross-referencing */
+    VULN_INTEL_EXPLOITS: boolean;
+    /** Enable CISA KEV catalog checking */
+    VULN_INTEL_KEV: boolean;
+    /** Enable CWE description enrichment */
+    VULN_INTEL_CWE: boolean;
+    /** Cache vulnerability data (minutes, default 1440 = 24h) */
+    VULN_INTEL_CACHE_TTL: number;
+    /** Path to vulnerability intelligence cache file */
+    VULN_INTEL_CACHE_PATH: string;
+    
+    // Report Branding Options
+    /** Custom company/organization name for reports */
+    BRAND_COMPANY_NAME: string;
+    /** URL to custom logo image (PNG/SVG recommended, max 200x50px) */
+    BRAND_LOGO_URL?: string;
+    /** Primary brand color (hex, e.g., #3fb950) */
+    BRAND_PRIMARY_COLOR: string;
+    /** URL to external CSS file for advanced customization */
+    BRAND_CUSTOM_CSS_URL?: string;
+    /** Custom footer text for reports */
+    BRAND_FOOTER_TEXT?: string;
+    /** Report title prefix (appears before "Compliance Report") */
+    BRAND_REPORT_TITLE?: string;
 }
 
 /**
@@ -181,6 +237,37 @@ export function loadEnvConfig(): EnvConfig {
         SIEM_ENABLED: getOptional('SIEM_ENABLED', 'false').toLowerCase() === 'true',
         SIEM_WEBHOOK_URL: getOptional('SIEM_WEBHOOK_URL', ''),
         SIEM_LOG_PATH: getOptional('SIEM_LOG_PATH', 'logs/security-events.log'),
+        ZAP_API_KEY: getOptional('ZAP_API_KEY', ''),
+        CUSTOM_CHECKS_ENABLED: getOptional('CUSTOM_CHECKS_ENABLED', 'true').toLowerCase() === 'true',
+        CUSTOM_CHECKS_DIR: getOptional('CUSTOM_CHECKS_DIR', './custom_checks'),
+        DEVICES: getOptional('DEVICES', 'desktop').split(',').map(d => d.trim()).filter(d => d.length > 0),
+        API_TESTING_ENABLED: getOptional('API_TESTING_ENABLED', 'false').toLowerCase() === 'true',
+        API_SPEC_PATH: getOptional('API_SPEC_PATH', ''),
+        API_ENDPOINTS: getOptional('API_ENDPOINTS', ''),
+        
+        // Debug Mode Options (all off by default)
+        DEBUG_HEADED: getOptional('DEBUG_HEADED', 'false').toLowerCase() === 'true',
+        DEBUG_SLOW_MO: getNumber('DEBUG_SLOW_MO', 0),
+        DEBUG_DEVTOOLS: getOptional('DEBUG_DEVTOOLS', 'false').toLowerCase() === 'true',
+        DEBUG_PAUSE_ON_FAILURE: getOptional('DEBUG_PAUSE_ON_FAILURE', 'false').toLowerCase() === 'true',
+        DEBUG_CAPTURE_CONSOLE: getOptional('DEBUG_CAPTURE_CONSOLE', 'false').toLowerCase() === 'true',
+        
+        // Vulnerability Intelligence Options
+        VULN_INTEL_ENABLED: getOptional('VULN_INTEL_ENABLED', 'true').toLowerCase() === 'true',
+        NVD_API_KEY: getOptional('NVD_API_KEY', ''),
+        VULN_INTEL_EXPLOITS: getOptional('VULN_INTEL_EXPLOITS', 'true').toLowerCase() === 'true',
+        VULN_INTEL_KEV: getOptional('VULN_INTEL_KEV', 'true').toLowerCase() === 'true',
+        VULN_INTEL_CWE: getOptional('VULN_INTEL_CWE', 'true').toLowerCase() === 'true',
+        VULN_INTEL_CACHE_TTL: getNumber('VULN_INTEL_CACHE_TTL', 1440),
+        VULN_INTEL_CACHE_PATH: getOptional('VULN_INTEL_CACHE_PATH', './cache/vuln-intel-cache.json'),
+        
+        // Report Branding Options
+        BRAND_COMPANY_NAME: getOptional('BRAND_COMPANY_NAME', 'Stealth Compliance Monitor'),
+        BRAND_LOGO_URL: getOptional('BRAND_LOGO_URL', ''),
+        BRAND_PRIMARY_COLOR: getOptional('BRAND_PRIMARY_COLOR', '#3fb950'),
+        BRAND_CUSTOM_CSS_URL: getOptional('BRAND_CUSTOM_CSS_URL', ''),
+        BRAND_FOOTER_TEXT: getOptional('BRAND_FOOTER_TEXT', ''),
+        BRAND_REPORT_TITLE: getOptional('BRAND_REPORT_TITLE', ''),
     };
 
     // Validate delay configuration

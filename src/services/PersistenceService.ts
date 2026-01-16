@@ -50,6 +50,7 @@ export type LogEntryType =
     | 'broken_link'
     | 'broken_asset'
     | 'visual_regression'
+    | 'custom_check_violation'
     | 'custom';
 
 /**
@@ -90,6 +91,7 @@ export interface HydratedSession {
     brokenLinks: unknown[];
     brokenAssets: unknown[];
     visualRegressions: unknown[];
+    customCheckViolations: unknown[];
     customEntries: unknown[];
     isComplete: boolean;
     entryCount: number;
@@ -243,6 +245,7 @@ export class PersistenceService {
             brokenLinks: [],
             brokenAssets: [],
             visualRegressions: [],
+            customCheckViolations: [],
             customEntries: [],
             isComplete: false,
             entryCount: 0,
@@ -307,6 +310,9 @@ export class PersistenceService {
                             break;
                         case 'visual_regression':
                             session.visualRegressions.push(entry.payload);
+                            break;
+                        case 'custom_check_violation':
+                            session.customCheckViolations.push(entry.payload);
                             break;
                         case 'custom':
                             session.customEntries.push(entry.payload);

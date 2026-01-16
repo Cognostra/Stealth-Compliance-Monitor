@@ -21,6 +21,57 @@ import { createConfig } from './config/compliance.config';
 import { ComplianceRunner } from './services/ComplianceRunner';
 import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator';
 import { WebhookService } from './services/WebhookService';
+import { ZapActiveScanner } from './services/ZapActiveScanner';
+
+/**
+ * Display help message
+ */
+function displayHelp(): void {
+    console.log(`
+╔═══════════════════════════════════════════════════════════════════╗
+║           Stealth Compliance Monitor - Help                       ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Usage: npx ts-node src/index.ts [options]
+
+Options:
+  --profile=<name>   Select scan profile (default: standard)
+                     Profiles: smoke, standard, deep, deep-active
+
+  --active           Enable ZAP active scanning (spider + attack payloads)
+                     ⚠️  WARNING: This is AGGRESSIVE and NOT stealthy
+                     Only use with explicit authorization!
+
+  --headed           Run browser in visible (headed) mode for debugging
+  --slow-mo=<ms>     Slow down browser actions by specified milliseconds
+  --debug            Enable full debug mode (headed + devtools + pause on failure)
+
+  --help, -h         Show this help message
+
+Profiles:
+  smoke        Quick health check (1 page, no security tests)
+  standard     Regular CI/CD scans (15 pages, passive only)
+  deep         Full assessment (50 pages, black-box probes)
+  deep-active  Full active scan (50 pages, ZAP spider + active)
+
+Debug Mode:
+  --headed           Show browser window (disable headless)
+  --slow-mo=500      Add 500ms delay between actions
+  --debug            Combines: headed + devtools + pause on failures
+
+Examples:
+  npm start                           # Standard profile
+  npm start -- --profile=smoke        # Quick smoke test
+  npm start -- --profile=deep         # Deep passive scan
+  npm start -- --active               # Active scanning (be careful!)
+  npm start -- --profile=deep-active  # Explicit active profile
+  npm start -- --headed               # Debug with visible browser
+  npm start -- --debug --slow-mo=300  # Full debug mode with slow actions
+
+Environment Variables:
+  See .env.example for full configuration options.
+`);
+}
 
 /**
  * Main execution function
@@ -28,12 +79,56 @@ import { WebhookService } from './services/WebhookService';
 async function main(): Promise<void> {
     // Parse command line arguments
     const args = process.argv.slice(2);
+
+    // Check for --help flag
+    if (args.includes('--help') || args.includes('-h')) {
+        displayHelp();
+        process.exit(0);
+    }
+
     const profileArg = args.find(arg => arg.startsWith('--profile='));
-    const profileName = profileArg ? profileArg.split('=')[1] : 'standard';
+    const activeFlag = args.includes('--active');
+    let profileName = profileArg ? profileArg.split('=')[1] : 'standard';
+
+    // Parse debug flags
+    const headedFlag = args.includes('--headed');
+    const debugFlag = args.includes('--debug');
+    const slowMoArg = args.find(arg => arg.startsWith('--slow-mo='));
+    const slowMoValue = slowMoArg ? parseInt(slowMoArg.split('=')[1], 10) : 0;
+
+    // If --active flag is set, force deep-active profile
+    if (activeFlag && !profileArg) {
+        profileName = 'deep-active';
+        logger.warn('⚠️  --active flag detected, using deep-active profile');
+    }
 
     // Load merged configuration
     const config = createConfig(profileName);
+
+    // Override activeScanning if --active flag is present
+    if (activeFlag) {
+        (config as { activeScanning: boolean }).activeScanning = true;
+    }
+
+    // Apply debug mode overrides from CLI flags
+    if (headedFlag || debugFlag) {
+        (config as any).DEBUG_HEADED = true;
+        logger.info('🔍 Debug: Headed mode enabled');
+    }
+    if (debugFlag) {
+        (config as any).DEBUG_DEVTOOLS = true;
+        (config as any).DEBUG_PAUSE_ON_FAILURE = true;
+        (config as any).DEBUG_CAPTURE_CONSOLE = true;
+        logger.info('🔍 Debug: Full debug mode enabled (devtools + pause on failure)');
+    }
+    if (slowMoValue > 0) {
+        (config as any).DEBUG_SLOW_MO = slowMoValue;
+        logger.info(`🔍 Debug: SlowMo set to ${slowMoValue}ms`);
+    }
+
     logger.info(`Loaded Profile: ${config.name}`);
+    logger.info(`Active Scanning: ${config.activeScanning ? 'ENABLED ⚠️' : 'Disabled'}`);
+
 
     // Determine Targets
     // Determine Targets

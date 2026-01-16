@@ -1,5 +1,9 @@
 # Stealth Compliance Monitor - Docker Compose
 # Run with: docker-compose up --build
+#
+# Multi-architecture support:
+#   - Both amd64 and arm64 platforms supported
+#   - Works on x86_64 Linux/Windows and Apple Silicon Macs
 
 version: '3.8'
 
@@ -10,13 +14,20 @@ services:
   zaproxy:
     image: ghcr.io/zaproxy/zaproxy:stable
     container_name: zap-proxy
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/amd64}
+    # ZAP Configuration:
+    # - If ZAP_API_KEY is set, use it for authenticated API access
+    # - If ZAP_API_KEY is empty/unset, disable API key (dev mode)
     command: >
       zap.sh -daemon
       -host 0.0.0.0
       -port 8080
       -config api.addrs.addr.name=.*
       -config api.addrs.addr.regex=true
-      -config api.key=disable
+      ${ZAP_API_KEY:+-config api.key=${ZAP_API_KEY}}
+      ${ZAP_API_KEY:-config api.key=disable}
+    environment:
+      - ZAP_API_KEY=${ZAP_API_KEY:-}
     ports:
       - "8080:8080"  # Expose for host inspection
     networks:
@@ -54,6 +65,24 @@ services:
       MAX_DELAY_MS: ${MAX_DELAY_MS:-5000}
       USER_AGENT: ${USER_AGENT:-LSCM-Bot/1.0 (Live Site Compliance Monitor)}
 
+      # Debug mode options
+      DEBUG_HEADED: ${DEBUG_HEADED:-false}
+      DEBUG_SLOW_MO: ${DEBUG_SLOW_MO:-0}
+      DEBUG_DEVTOOLS: ${DEBUG_DEVTOOLS:-false}
+
+      # Vulnerability Intelligence
+      VULN_INTEL_ENABLED: ${VULN_INTEL_ENABLED:-true}
+      NVD_API_KEY: ${NVD_API_KEY:-}
+      VULN_INTEL_CACHE_PATH: /app/cache/vuln-intel-cache.json
+
+      # Report Branding
+      BRAND_COMPANY_NAME: ${BRAND_COMPANY_NAME:-}
+      BRAND_LOGO_URL: ${BRAND_LOGO_URL:-}
+      BRAND_PRIMARY_COLOR: ${BRAND_PRIMARY_COLOR:-#3fb950}
+      BRAND_CUSTOM_CSS_URL: ${BRAND_CUSTOM_CSS_URL:-}
+      BRAND_FOOTER_TEXT: ${BRAND_FOOTER_TEXT:-}
+      BRAND_REPORT_TITLE: ${BRAND_REPORT_TITLE:-}
+
       # Directories (container paths)
       SCREENSHOTS_DIR: /app/screenshots
       REPORTS_DIR: /app/reports
@@ -66,6 +95,7 @@ services:
       - ./logs:/app/logs
       - ./screenshots:/app/screenshots
       - ./snapshots:/app/snapshots
+      - ./cache:/app/cache
     networks:
       - compliance-net
     # Don't restart on exit - this is a one-shot job

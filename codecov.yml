@@ -1,0 +1,52 @@
+# Codecov Configuration
+# https://docs.codecov.io/docs/codecov-yaml
+
+coverage:
+  precision: 2
+  round: down
+  range: "40...80"
+  
+  status:
+    project:
+      default:
+        # Coverage must not drop by more than 2%
+        threshold: 2%
+        target: auto
+        informational: false
+    patch:
+      default:
+        # New code should have at least 60% coverage
+        target: 60%
+        informational: false
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: yes
+      loop: yes
+      method: no
+      macro: no
+
+comment:
+  layout: "reach,diff,flags,files,footer"
+  behavior: default
+  require_changes: false
+  require_base: no
+  require_head: yes
+  
+  # Show files with coverage changes
+  show_carryforward_flags: false
+
+ignore:
+  - "node_modules/**/*"
+  - "dist/**/*"
+  - "coverage/**/*"
+  - "tests/**/*"
+  - "**/*.d.ts"
+  - "src/index.ts"
+
+flags:
+  unittests:
+    paths:
+      - src/
+    carryforward: true

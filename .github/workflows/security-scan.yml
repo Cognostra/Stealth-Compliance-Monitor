@@ -1,0 +1,184 @@
+# Scheduled Security Scan Workflow
+# Runs comprehensive security scans on a schedule
+
+name: Scheduled Security Scan
+
+on:
+  # Run weekly on Sunday at 2 AM UTC
+  schedule:
+    - cron: '0 2 * * 0'
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Scan profile'
+        required: true
+        default: 'deep'
+        type: choice
+        options:
+          - smoke
+          - standard
+          - deep
+      target_url:
+        description: 'Target URL (optional, uses LIVE_URL from secrets if empty)'
+        required: false
+        type: string
+
+concurrency:
+  group: security-scan
+  cancel-in-progress: false
+
+jobs:
+  security-scan:
+    name: Full Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    services:
+      zaproxy:
+        image: ghcr.io/zaproxy/zaproxy:stable
+        ports:
+          - 8080:8080
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/JSON/core/view/version/ || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 15
+          --health-start-period 45s
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright Browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Wait for ZAP to be Ready
+        run: |
+          echo "Waiting for ZAP to be fully ready..."
+          for i in {1..45}; do
+            if curl -s http://localhost:8080/JSON/core/view/version/ > /dev/null; then
+              echo "ZAP is ready!"
+              break
+            fi
+            echo "Waiting... ($i/45)"
+            sleep 2
+          done
+
+      - name: Determine Profile
+        id: profile
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "profile=${{ inputs.profile }}" >> $GITHUB_OUTPUT
+          else
+            echo "profile=deep" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine Target URL
+        id: target
+        run: |
+          if [ -n "${{ inputs.target_url }}" ]; then
+            echo "url=${{ inputs.target_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "url=${{ secrets.LIVE_URL }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Security Scan
+        run: npx ts-node src/index.ts --profile=${{ steps.profile.outputs.profile }}
+        env:
+          CI: true
+          LIVE_URL: ${{ steps.target.outputs.url }}
+          ZAP_PROXY_URL: http://localhost:8080
+          TEST_EMAIL: ${{ secrets.TEST_EMAIL }}
+          TEST_PASSWORD: ${{ secrets.TEST_PASSWORD }}
+          ENABLE_AI: ${{ secrets.OPENAI_API_KEY && 'true' || 'false' }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+
+      - name: Upload Security Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-report-${{ github.run_number }}
+          path: |
+            reports/
+            screenshots/
+            logs/
+          retention-days: 30
+
+      - name: Parse Scan Results
+        id: results
+        if: always()
+        run: |
+          if [ -f "reports/latest.json" ]; then
+            CRITICAL=$(jq -r '.summary.securityCritical // 0' reports/latest.json)
+            HIGH=$(jq -r '.summary.securityHigh // 0' reports/latest.json)
+            PASSED=$(jq -r '.summary.passedAudit // false' reports/latest.json)
+            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+            echo "high=$HIGH" >> $GITHUB_OUTPUT
+            echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          else
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
+            echo "passed=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack Notification
+        if: always() && env.SLACK_WEBHOOK_URL != ''
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          STATUS="${{ job.status }}"
+          CRITICAL="${{ steps.results.outputs.critical }}"
+          HIGH="${{ steps.results.outputs.high }}"
+          
+          if [ "$STATUS" == "success" ] && [ "$CRITICAL" == "0" ]; then
+            COLOR="good"
+            EMOJI="✅"
+          elif [ "$CRITICAL" != "0" ] || [ "$HIGH" != "0" ]; then
+            COLOR="danger"
+            EMOJI="🚨"
+          else
+            COLOR="warning"
+            EMOJI="⚠️"
+          fi
+          
+          curl -X POST -H 'Content-type: application/json' --data "{
+            \"attachments\": [{
+              \"color\": \"$COLOR\",
+              \"title\": \"$EMOJI Security Scan Complete\",
+              \"fields\": [
+                {\"title\": \"Status\", \"value\": \"$STATUS\", \"short\": true},
+                {\"title\": \"Profile\", \"value\": \"${{ steps.profile.outputs.profile }}\", \"short\": true},
+                {\"title\": \"Critical Issues\", \"value\": \"$CRITICAL\", \"short\": true},
+                {\"title\": \"High Issues\", \"value\": \"$HIGH\", \"short\": true}
+              ],
+              \"footer\": \"Stealth Compliance Monitor\",
+              \"ts\": $(date +%s)
+            }]
+          }" $SLACK_WEBHOOK_URL
+
+      - name: Fail if Critical Issues Found
+        if: steps.results.outputs.critical != '0'
+        run: |
+          echo "❌ Critical security issues found: ${{ steps.results.outputs.critical }}"
+          exit 1

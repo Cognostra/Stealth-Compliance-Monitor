@@ -7,10 +7,11 @@
  * REFACTORED: Now uses ScannerRegistry (Observer Pattern) instead of hardcoded scanner dependencies.
  */
 
-import { chromium, Browser, BrowserContext, Page, Response } from 'playwright';
+import { chromium, Browser, BrowserContext, Page, Response, devices } from 'playwright';
 import { getConfig, EnvConfig } from '../config/env';
 import { logger } from '../utils/logger';
 import { ScannerRegistry, IScanner } from '../core/ScannerRegistry';
+import { retryPlaywright } from '../utils/retry';
 
 // Default scanners (lazy-loaded for backward compatibility)
 import { NetworkSpy, NetworkIncident } from './NetworkSpy';
@@ -177,24 +178,56 @@ export class BrowserService {
      * Initialize the browser with ZAP proxy and stealth settings
      * Must be called before any other methods
      */
-    async initialize(options?: { headless?: boolean; useProxy?: boolean }): Promise<void> {
+    async initialize(options?: { 
+        headless?: boolean; 
+        useProxy?: boolean; 
+        deviceName?: string;
+        slowMo?: number;
+        devtools?: boolean;
+    }): Promise<void> {
         if (this.browser) {
             logger.warn('BrowserService already initialized');
             return;
         }
 
-        const headless = options?.headless ?? true;
+        // Get debug settings from config (can be overridden by options)
+        const debugConfig = {
+            headed: this.config.DEBUG_HEADED,
+            slowMo: this.config.DEBUG_SLOW_MO,
+            devtools: this.config.DEBUG_DEVTOOLS,
+            captureConsole: this.config.DEBUG_CAPTURE_CONSOLE,
+        };
+
+        // Determine final settings (CLI options override env config)
+        const headless = options?.headless ?? !debugConfig.headed;
         const useProxy = options?.useProxy ?? true;
-        const enableStealth = (getConfig() as any).stealth !== false; // Default true, but check override
+        const deviceName = options?.deviceName;
+        const slowMo = options?.slowMo ?? debugConfig.slowMo;
+        const devtools = options?.devtools ?? debugConfig.devtools;
+        const enableStealth = (getConfig() as any).stealth !== false; // Default true
 
         // Register default scanners before initialization
         this.registerDefaultScanners();
 
         let userAgent = this.getUserAgent();
-        let viewport = { width: 1920, height: 1080 };
+        let viewport: { width: number; height: number } | null = { width: 1920, height: 1080 };
+        let deviceConfig: any = {};
 
-        // STEALTH: Randonize User-Agent and Viewport
-        if (enableStealth) {
+        // Device Emulation vs Desktop Stealth
+        if (deviceName && deviceName !== 'desktop') {
+            const device = devices[deviceName];
+            if (device) {
+                logger.info(`📱 Emulating device: ${deviceName}`);
+                deviceConfig = device;
+                userAgent = device.userAgent;
+                viewport = device.viewport;
+            } else {
+                logger.warn(`Device '${deviceName}' not found in Playwright defaults. Falling back to desktop.`);
+            }
+        }
+
+        // Only apply random stealth variation if NOT emulating a specific device (to avoid breaking emulation)
+        if (enableStealth && (!deviceName || deviceName === 'desktop')) {
             const userAgents = [
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -214,6 +247,8 @@ export class BrowserService {
         logger.info(`Headless: ${headless}`);
         if (useProxy) logger.info(`Proxy: ${this.config.ZAP_PROXY_URL}`);
         logger.info(`Stealth Mode: ${enableStealth}`);
+        if (slowMo > 0) logger.info(`SlowMo: ${slowMo}ms`);
+        if (devtools) logger.info(`DevTools: enabled`);
         logger.info(`User-Agent: ${userAgent}`);
         logger.info(`Registered Scanners: ${this.scannerRegistry.getScannerNames().join(', ')}`);
 
@@ -221,6 +256,8 @@ export class BrowserService {
             // Launch browser with proxy configuration
             this.browser = await chromium.launch({
                 headless,
+                slowMo: slowMo > 0 ? slowMo : undefined,
+                devtools: devtools && !headless, // devtools only works in headed mode
                 args: [
                     '--disable-blink-features=AutomationControlled',
                     '--disable-dev-shm-usage',
@@ -237,7 +274,8 @@ export class BrowserService {
                 timezoneId: 'America/Chicago',
                 javaScriptEnabled: true,
                 hasTouch: false,
-                isMobile: false
+                isMobile: false,
+                ...deviceConfig // Override with device specifics (isMobile, hasTouch, dpi, etc.)
             };
 
             // Route all traffic through ZAP proxy if enabled
@@ -312,7 +350,7 @@ export class BrowserService {
     }
 
     /**
-     * Navigate to a URL with enforced human delay
+     * Navigate to a URL with enforced human delay and retry logic
      * @param url - The URL to navigate to
      * @returns Navigation result with status and headers
      */
@@ -324,10 +362,13 @@ export class BrowserService {
         logger.debug(`Navigating to: ${url}`);
 
         try {
-            const response = await this.page!.goto(url, {
-                waitUntil: 'domcontentloaded',
-                timeout: 60000,
-            });
+            const response = await retryPlaywright(
+                () => this.page!.goto(url, {
+                    waitUntil: 'domcontentloaded',
+                    timeout: 60000,
+                }),
+                { retries: 3, baseDelay: 1000, logger }
+            );
 
             const finished = Date.now();
 
@@ -347,7 +388,7 @@ export class BrowserService {
             return result;
         } catch (error) {
             const errMsg = error instanceof Error ? error.message : String(error);
-            logger.error(`Navigation failed: ${errMsg}`);
+            logger.error(`Navigation failed after retries: ${errMsg}`);
             throw error;
         }
     }
@@ -396,7 +437,7 @@ export class BrowserService {
     }
 
     /**
-     * Click an element (with human-like behavior)
+     * Click an element (with human-like behavior and retry logic)
      * @param selector - CSS selector for the element
      * @returns Interaction result
      */
@@ -405,7 +446,10 @@ export class BrowserService {
         await this.humanDelay();
 
         try {
-            await this.page!.click(selector);
+            await retryPlaywright(
+                () => this.page!.click(selector),
+                { retries: 2, baseDelay: 500, logger }
+            );
             logger.debug(`Clicked element: ${selector}`);
             return { success: true, selector, action: 'click' };
         } catch (error) {
@@ -726,6 +770,92 @@ export class BrowserService {
      */
     getMaxDelay(): number {
         return this.config.MAX_DELAY_MS || 5000;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Debug Mode Features
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Capture error state: screenshot + console logs
+     * Useful for debugging failures in headful or headless mode
+     * @param errorName - Name/description of the error
+     * @returns Object with screenshot path and console errors
+     */
+    async captureErrorState(errorName: string): Promise<{
+        screenshotPath: string | null;
+        consoleErrors: ConsoleError[];
+        allConsoleLogs: ConsoleError[];
+        currentUrl: string;
+        timestamp: number;
+    }> {
+        const timestamp = Date.now();
+        let screenshotPath: string | null = null;
+        
+        // Capture screenshot
+        if (this.page && this.isInitialized) {
+            try {
+                const filename = `error-${errorName.replace(/[^a-zA-Z0-9]/g, '-')}-${timestamp}.png`;
+                const filepath = `${this.config.SCREENSHOTS_DIR}/${filename}`;
+                await this.page.screenshot({ path: filepath, fullPage: true });
+                screenshotPath = filepath;
+                logger.info(`📸 Error screenshot saved: ${filepath}`);
+            } catch (e) {
+                logger.warn(`Failed to capture error screenshot: ${e}`);
+            }
+        }
+
+        // Get console errors and all logs
+        const consoleErrors = this.getConsoleErrors();
+        const allConsoleLogs = this.config.DEBUG_CAPTURE_CONSOLE 
+            ? (this.consoleMonitor?.getErrors() ?? [])
+            : consoleErrors;
+
+        const currentUrl = this.page?.url() ?? 'unknown';
+
+        return {
+            screenshotPath,
+            consoleErrors,
+            allConsoleLogs,
+            currentUrl,
+            timestamp,
+        };
+    }
+
+    /**
+     * Pause execution for debugging (only works in headed mode)
+     * Opens a REPL-like pause - press "Resume" in browser to continue
+     */
+    async debugPause(reason: string = 'Debug pause'): Promise<void> {
+        if (!this.page || !this.isInitialized) {
+            logger.warn('Cannot pause: browser not initialized');
+            return;
+        }
+
+        const isHeaded = !this.browser?.contexts()[0]?.browser()?.isConnected?.() === false;
+        
+        if (this.config.DEBUG_PAUSE_ON_FAILURE || this.config.DEBUG_HEADED) {
+            logger.info(`⏸️  Pausing: ${reason}`);
+            logger.info('   Press "Resume" in the browser DevTools or Ctrl+C to continue...');
+            
+            try {
+                // Use Playwright's built-in pause (opens inspector)
+                await this.page.pause();
+            } catch (e) {
+                // Pause may throw if not in headed mode
+                logger.debug(`Pause not available: ${e}`);
+            }
+        }
+    }
+
+    /**
+     * Check if debug mode is enabled
+     */
+    isDebugMode(): boolean {
+        return this.config.DEBUG_HEADED || 
+               this.config.DEBUG_DEVTOOLS || 
+               this.config.DEBUG_PAUSE_ON_FAILURE ||
+               this.config.DEBUG_SLOW_MO > 0;
     }
 
     /**

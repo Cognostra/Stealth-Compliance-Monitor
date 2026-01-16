@@ -289,6 +289,19 @@ automated-compliance-runner/
 │   │   │ ══════════════════════════════════════════════════════════
 │   │   ├── SecurityAssessment.ts   # Black-box pentest (IDOR, XSS, SQLi)
 │   │   ├── PiiScanner.ts           # Data Loss Prevention (DLP)
+│   │   ├── ZapActiveScanner.ts     # ZAP spider + active vulnerability scan
+│   │   ├── ApiEndpointTester.ts    # REST/GraphQL API security testing
+│   │   │
+│   │   │ ══════════════════════════════════════════════════════════
+│   │   │  VULNERABILITY INTELLIGENCE
+│   │   │ ══════════════════════════════════════════════════════════
+│   │   ├── VulnIntelligenceService.ts  # CVE enrichment, CVSS scores
+│   │   │   ├── CVE Mapping           # Map findings to CVE IDs
+│   │   │   ├── CVSS Scoring          # v3.1 base/severity scores
+│   │   │   ├── Exploit Intel         # ExploitDB/Metasploit cross-ref
+│   │   │   ├── CISA KEV Check        # Known Exploited Vulns catalog
+│   │   │   ├── Risk Scoring          # 1-100 composite risk score
+│   │   │   └── Remediation Priority  # Effort + impact ranking
 │   │   │
 │   │   │ ══════════════════════════════════════════════════════════
 │   │   │  INTELLIGENCE & OPERATIONS
@@ -439,6 +452,8 @@ automated-compliance-runner/
 | Category | Service | Method | Safety Level |
 |----------|---------|--------|--------------|
 | **Passive Scanning** | ZapService | Proxy traffic analysis | ✅ Read-only |
+| **Active Scanning** | ZapActiveScanner | Spider + attack payloads | ⚠️ Aggressive |
+| **API Testing** | ApiEndpointTester | REST/GraphQL security tests | ⚠️ Safe probes |
 | **Secret Detection** | SecretScanner | Pattern matching in JS | ✅ Read-only |
 | **Supabase Security** | SupabaseSecurityScanner | Key detection + RLS probe | ⚠️ Safe probes |
 | **Library Vulns** | FrontendVulnerabilityScanner | Version detection | ✅ Read-only |
@@ -449,6 +464,7 @@ automated-compliance-runner/
 | **Auth Bypass** | SecurityAssessment | Cookie-less access | ⚠️ Safe probes |
 | **Info Disclosure** | SecurityAssessment | Common paths check | ✅ Read-only |
 | **DLP Scanning** | PiiScanner | Regex (SSN/CC/Phone) | ✅ Read-only |
+| **Custom Checks** | CustomCheckLoader | User-defined scripts | ✅ Configurable |
 | **AI Repair** | AiRemediation | GPT-4 Code Fixes | ✅ Passive Gen |
 | **Webhook Alerts** | WebhookService | HMAC Signed Payloads | ✅ Notification |
 | **SIEM Logging** | SiemLogger | ECS-Compatible Logs | ✅ Observability |

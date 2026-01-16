@@ -53,3 +53,36 @@ export { PersistenceService, persistenceService } from './PersistenceService';
 export type { WALEntry, LogEntryType, HydratedSession, SessionMetadata } from './PersistenceService';
 
 export { HtmlReportGenerator } from './HtmlReportGenerator';
+export type { BrandingConfig } from './HtmlReportGenerator';
+
+export { ZapActiveScanner } from './ZapActiveScanner';
+export type { ActiveScanResult, ActiveScanProgress, SpiderProgress } from './ZapActiveScanner';
+
+export { ApiEndpointTester } from './ApiEndpointTester';
+export type { ApiEndpoint, ApiFinding, ApiTestResult } from './ApiEndpointTester';
+
+export { VulnIntelligenceService } from './VulnIntelligenceService';
+export type {
+    CvssScore,
+    CweInfo,
+    ExploitInfo,
+    RemediationInfo,
+    EnrichedVulnerability,
+    VulnIntelligenceConfig,
+    IntelligenceSummary,
+} from './VulnIntelligenceService';
+
+export { HistoryService } from './HistoryService';
+export type { RunSummary, TrendAnalysis, ComparisonResult } from './HistoryService';
+
+export { SiemLogger } from './SiemLogger';
+export type { SecurityIssue, EcsEvent, EventBatch } from './SiemLogger';
+
+export { WebhookService } from './WebhookService';
+export type { WebhookPayload, WebhookResult } from './WebhookService';
+
+export { AiRemediationService } from './AiRemediationService';
+export type { RemediationRequest, RemediationResponse, BatchRemediationResult } from './AiRemediationService';
+
+export { FleetReportGenerator } from './FleetReportGenerator';
+export type { FleetSiteResult, FleetSummary } from './FleetReportGenerator';
