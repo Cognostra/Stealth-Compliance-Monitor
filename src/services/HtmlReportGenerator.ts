@@ -587,7 +587,8 @@ export class HtmlReportGenerator {
         const issues: ArchitectIssue[] = [];
 
         // Process accessibility violations
-        report.crawl.pageResults.forEach(page => {
+        const pageResults = report.crawl?.pageResults ?? [];
+        pageResults.forEach(page => {
             page.a11yResult?.violations?.forEach(violation => {
                 const remediation = REMEDIATION_DATABASE[violation.id] || DEFAULT_REMEDIATION;
                 const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
@@ -615,7 +616,7 @@ export class HtmlReportGenerator {
         });
 
         // Process security alerts
-        report.security_alerts.forEach(alert => {
+        (report.security_alerts ?? []).forEach(alert => {
             const riskMap: Record<string, 'critical' | 'serious' | 'warning'> = {
                 High: 'critical',
                 Medium: 'serious',
@@ -641,7 +642,7 @@ export class HtmlReportGenerator {
         });
 
         // Process leaked secrets
-        report.leaked_secrets.forEach(secret => {
+        (report.leaked_secrets ?? []).forEach(secret => {
             issues.push({
                 id: `leaked-${secret.type.toLowerCase().replace(/\s+/g, '-')}`,
                 category: 'security',
@@ -658,7 +659,7 @@ export class HtmlReportGenerator {
         });
 
         // Process broken assets
-        report.crawl.pageResults.forEach(page => {
+        pageResults.forEach(page => {
             page.assetResult?.brokenImages?.forEach(imgUrl => {
                 const remediation = REMEDIATION_DATABASE['broken-image'] || DEFAULT_REMEDIATION;
                 issues.push({
@@ -780,19 +781,29 @@ export class HtmlReportGenerator {
                     csrf: 'medium'
                 };
 
+                const severityKey = String(finding.severity || '').toUpperCase();
+                const categoryKey = String(finding.category || 'issue');
+                const endpoint = String(finding.endpoint || '').trim();
+                let component = endpoint || '/';
+                try {
+                    component = new URL(endpoint || '/', 'http://localhost').pathname || component;
+                } catch {
+                    // keep fallback
+                }
+
                 issues.push({
-                    id: finding.id,
+                    id: finding.id || `pentest-${categoryKey.toLowerCase()}`,
                     category: 'pentest',
-                    severity: severityMap[finding.severity] || 'warning',
-                    effort: effortMap[finding.category] || 'medium',
-                    component: new URL(finding.endpoint, 'http://localhost').pathname || finding.endpoint,
-                    playwrightLocator: `await page.goto('${finding.endpoint}')`,
-                    issue: `[${finding.category.toUpperCase()}] ${finding.title}: ${finding.description}`,
-                    remediation: finding.remediation,
+                    severity: severityMap[severityKey] || 'warning',
+                    effort: effortMap[categoryKey] || 'medium',
+                    component,
+                    playwrightLocator: endpoint ? `await page.goto('${endpoint}')` : `// Navigate to affected endpoint`,
+                    issue: `[${categoryKey.toUpperCase()}] ${finding.title || 'Finding'}: ${finding.description || ''}`,
+                    remediation: finding.remediation || 'Review finding details and remediate accordingly.',
                     docsUrl: finding.cweId
-                        ? `https://cwe.mitre.org/data/definitions/${finding.cweId.replace('CWE-', '')}.html`
+                        ? `https://cwe.mitre.org/data/definitions/${String(finding.cweId).replace('CWE-', '')}.html`
                         : 'https://owasp.org/www-project-web-security-testing-guide/',
-                    url: finding.endpoint
+                    url: endpoint || undefined
                 });
             });
         }
@@ -962,9 +973,16 @@ export class HtmlReportGenerator {
             fs.mkdirSync(this.reportsDir, { recursive: true });
         }
 
-        // Dynamic filename based on target URL
+        // Dynamic filename based on target URL (unless explicitly provided)
         const filename = this.getOutputFilename(report.meta.targetUrl);
-        const outputPath = path.join(this.reportsDir, filename);
+        const providedOutputPath = (report as { outputPath?: string }).outputPath;
+        const outputPath = providedOutputPath
+            ? path.resolve(providedOutputPath)
+            : path.join(this.reportsDir, filename);
+        const outputDir = path.dirname(outputPath);
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
+        }
         fs.writeFileSync(outputPath, html, 'utf-8');
 
         // Also write to dashboard.html for backward compatibility
@@ -1983,6 +2001,9 @@ export class HtmlReportGenerator {
         const customCssLink = this.branding.customCssUrl 
             ? `<link rel="stylesheet" href="${this.branding.customCssUrl}" />`
             : '';
+        const pagesVisited = report.crawl?.pagesVisited ?? 0;
+        const securityAlertsCount = (report.security_alerts?.length ?? 0) + (report.security_assessment?.findings?.length ?? 0);
+        const durationSeconds = ((report.meta?.duration ?? 0) / 1000).toFixed(1);
 
         return `
 <!DOCTYPE html>
@@ -2037,21 +2058,21 @@ export class HtmlReportGenerator {
                 <span class="env-icon">⏱️</span>
                 <div>
                     <div class="env-label">Duration</div>
-                    <div class="env-value">${(report.meta.duration / 1000).toFixed(1)}s</div>
+                    <div class="env-value">${durationSeconds}s</div>
                 </div>
             </div>
             <div class="env-item">
                 <span class="env-icon">📄</span>
                 <div>
                     <div class="env-label">Pages Audit</div>
-                    <div class="env-value">${report.crawl.pagesVisited}</div>
+                    <div class="env-value">${pagesVisited}</div>
                 </div>
             </div>
             <div class="env-item">
                 <span class="env-icon">🛡️</span>
                 <div>
                     <div class="env-label">Security Alerts</div>
-                    <div class="env-value">${report.security_alerts.length + (report.security_assessment?.findings.length || 0)}</div>
+                    <div class="env-value">${securityAlertsCount}</div>
                 </div>
             </div>
             <div class="env-item">

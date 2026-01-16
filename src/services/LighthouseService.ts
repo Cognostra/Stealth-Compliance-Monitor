@@ -133,8 +133,15 @@ export class LighthouseService {
      * Close Chrome instance
      */
     async close(): Promise<void> {
-        if (this.chrome) {
+        if (!this.chrome) {
+            return;
+        }
+
+        try {
             await this.chrome.kill();
+        } catch (error) {
+            this.logger.warn('Failed to close Lighthouse Chrome instance', { error });
+        } finally {
             this.chrome = null;
         }
     }
