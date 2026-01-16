@@ -4,7 +4,8 @@
 
 export { ComplianceRunner } from './ComplianceRunner.js';
 export { UserFlowRunner, DEFAULT_FLOWS } from './UserFlowRunner.js';
-export { ScannerRegistry, IScanner, defaultRegistry } from './ScannerRegistry.js';
+export { ScannerRegistry, defaultRegistry } from './ScannerRegistry.js';
+export type { IScanner } from './ScannerRegistry.js';
 export { CustomCheckLoader } from './CustomCheckLoader.js';
 export type { 
     CustomCheckViolation, 

@@ -25,29 +25,41 @@ export { LighthouseService } from './LighthouseService.js';
 
 export { ZapService } from './ZapService.js';
 
-export { ReportGenerator, ReportData } from './ReportGenerator.js';
+export { ReportGenerator } from './ReportGenerator.js';
+export type { ReportData } from './ReportGenerator.js';
 
-export { DataIntegrityService, IntegrityTestResult, IntegritySessionResult } from './DataIntegrityService.js';
+export { DataIntegrityService } from './DataIntegrityService.js';
+export type { IntegrityTestResult, IntegritySessionResult } from './DataIntegrityService.js';
 
-export { VisualSentinel, VisualTestResult } from './VisualSentinel.js';
+export { VisualSentinel } from './VisualSentinel.js';
+export type { VisualTestResult } from './VisualSentinel.js';
 
-export { NetworkSpy, NetworkIncident } from './NetworkSpy.js';
+export { NetworkSpy } from './NetworkSpy.js';
+export type { NetworkIncident } from './NetworkSpy.js';
 
-export { SecretScanner, LeakedSecret } from './SecretScanner.js';
+export { SecretScanner } from './SecretScanner.js';
+export type { LeakedSecret } from './SecretScanner.js';
 
-export { AssetValidator, AssetCheckResult } from './AssetValidator.js';
+export { AssetValidator } from './AssetValidator.js';
+export type { AssetCheckResult } from './AssetValidator.js';
 
-export { ConsoleMonitor, ConsoleError } from './ConsoleMonitor.js';
+export { ConsoleMonitor } from './ConsoleMonitor.js';
+export type { ConsoleError } from './ConsoleMonitor.js';
 
-export { LinkChecker, LinkCheckResult, ValidatedLink } from './LinkChecker.js';
+export { LinkChecker } from './LinkChecker.js';
+export type { LinkCheckResult, ValidatedLink } from './LinkChecker.js';
 
-export { SEOValidator, SEOResult } from './SEOValidator.js';
+export { SEOValidator } from './SEOValidator.js';
+export type { SEOResult } from './SEOValidator.js';
 
-export { InteractionTester, InteractionTestResult } from './InteractionTester.js';
+export { InteractionTester } from './InteractionTester.js';
+export type { InteractionTestResult } from './InteractionTester.js';
 
-export { ResilienceTester, ResilienceCheckResult } from './ResilienceTester.js';
+export { ResilienceTester } from './ResilienceTester.js';
+export type { ResilienceCheckResult } from './ResilienceTester.js';
 
-export { A11yScanner, A11yResult, A11yViolation } from './A11yScanner.js';
+export { A11yScanner } from './A11yScanner.js';
+export type { A11yResult, A11yViolation } from './A11yScanner.js';
 
 export { PersistenceService, persistenceService } from './PersistenceService.js';
 export type { WALEntry, LogEntryType, HydratedSession, SessionMetadata } from './PersistenceService.js';

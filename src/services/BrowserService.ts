@@ -16,11 +16,14 @@ import { retryPlaywright } from '../utils/retry.js';
 // Default scanners (lazy-loaded for backward compatibility)
 import { NetworkSpy, NetworkIncident } from './NetworkSpy.js';
 import { SecretScanner, LeakedSecret } from './SecretScanner.js';
-import { ConsoleMonitor, ConsoleError } from './ConsoleMonitor.js';
-import { SupabaseSecurityScanner, SupabaseSecurityIssue, SupabaseDetection } from './SupabaseSecurityScanner.js';
-import { FrontendVulnerabilityScanner, VulnerableLibrary } from './FrontendVulnerabilityScanner.js';
+import { ConsoleMonitor } from './ConsoleMonitor.js';
+import type { ConsoleError } from './ConsoleMonitor.js';
+import { SupabaseSecurityScanner } from './SupabaseSecurityScanner.js';
+import type { SupabaseSecurityIssue, SupabaseDetection } from './SupabaseSecurityScanner.js';
+import { FrontendVulnerabilityScanner } from './FrontendVulnerabilityScanner.js';
+import type { VulnerableLibrary } from './FrontendVulnerabilityScanner.js';
 
-export { ConsoleError }; // Re-export for compatibility with other services
+export type { ConsoleError }; // Re-export for compatibility with other services
 
 /**
  * Navigation result returned by goto()
