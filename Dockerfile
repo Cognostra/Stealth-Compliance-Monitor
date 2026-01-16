@@ -9,7 +9,7 @@
 
 # Base image with Node.js and pre-installed Playwright browsers
 # This image supports both amd64 and arm64 architectures
-FROM mcr.microsoft.com/playwright:v1.41.0-jammy
+FROM mcr.microsoft.com/playwright:v1.57.0-jammy
 
 # Labels for container registry
 LABEL org.opencontainers.image.source="https://github.com/your-org/stealth-compliance-monitor"
