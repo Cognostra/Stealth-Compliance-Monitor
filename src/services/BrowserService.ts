@@ -8,17 +8,17 @@
  */
 
 import { chromium, Browser, BrowserContext, Page, Response, devices } from 'playwright';
-import { getConfig, EnvConfig } from '../config/env';
-import { logger } from '../utils/logger';
-import { ScannerRegistry, IScanner } from '../core/ScannerRegistry';
-import { retryPlaywright } from '../utils/retry';
+import { getConfig, EnvConfig } from '../config/env.js';
+import { logger } from '../utils/logger.js';
+import { ScannerRegistry, IScanner } from '../core/ScannerRegistry.js';
+import { retryPlaywright } from '../utils/retry.js';
 
 // Default scanners (lazy-loaded for backward compatibility)
-import { NetworkSpy, NetworkIncident } from './NetworkSpy';
-import { SecretScanner, LeakedSecret } from './SecretScanner';
-import { ConsoleMonitor, ConsoleError } from './ConsoleMonitor';
-import { SupabaseSecurityScanner, SupabaseSecurityIssue, SupabaseDetection } from './SupabaseSecurityScanner';
-import { FrontendVulnerabilityScanner, VulnerableLibrary } from './FrontendVulnerabilityScanner';
+import { NetworkSpy, NetworkIncident } from './NetworkSpy.js';
+import { SecretScanner, LeakedSecret } from './SecretScanner.js';
+import { ConsoleMonitor, ConsoleError } from './ConsoleMonitor.js';
+import { SupabaseSecurityScanner, SupabaseSecurityIssue, SupabaseDetection } from './SupabaseSecurityScanner.js';
+import { FrontendVulnerabilityScanner, VulnerableLibrary } from './FrontendVulnerabilityScanner.js';
 
 export { ConsoleError }; // Re-export for compatibility with other services
 

@@ -2,10 +2,11 @@
  * Webhook Service Tests
  */
 
-import { WebhookService, WebhookPayload, WebhookResult } from '../../src/services/WebhookService';
+import { jest } from '@jest/globals';
+import { WebhookService, WebhookPayload, WebhookResult } from '../../src/services/WebhookService.js';
 
 // Mock config
-jest.mock('../../src/config/compliance.config', () => ({
+jest.mock('../../src/config/compliance.config.js', () => ({
     createConfig: jest.fn(() => ({
         webhook: {
             url: 'https://hooks.slack.com/services/test',
@@ -18,7 +19,7 @@ jest.mock('../../src/config/compliance.config', () => ({
 }));
 
 // Mock logger
-jest.mock('../../src/utils/logger', () => ({
+jest.mock('../../src/utils/logger.js', () => ({
     logger: {
         info: jest.fn(),
         warn: jest.fn(),

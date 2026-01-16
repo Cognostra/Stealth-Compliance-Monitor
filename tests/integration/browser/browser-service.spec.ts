@@ -5,8 +5,8 @@
  * Uses example.com as a safe public target.
  */
 
-import { test, expect } from '../fixtures';
-import { BrowserService } from '../../../src/services/BrowserService';
+import { test, expect } from '../fixtures/index.js';
+import { BrowserService } from '../../../src/services/BrowserService.js';
 
 test.describe('Browser Service', () => {
     test.describe('Initialization', () => {

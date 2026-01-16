@@ -20,8 +20,8 @@
  */
 
 import { Page } from 'playwright';
-import { logger } from '../utils/logger';
-import { baselineService } from './BaselineService';
+import { logger } from '../utils/logger.js';
+import { baselineService } from './BaselineService.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPES

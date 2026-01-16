@@ -12,12 +12,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 import { chromium } from 'playwright';
-import { PersistenceService, HydratedSession } from './PersistenceService';
-import { AiRemediationService } from './AiRemediationService';
-import { HistoryService, RunSummary } from './HistoryService';
-import { getComplianceTags } from '../data/compliance-map';
+import { PersistenceService, HydratedSession } from './PersistenceService.js';
+import { AiRemediationService } from './AiRemediationService.js';
+import { HistoryService, RunSummary } from './HistoryService.js';
+import { getComplianceTags } from '../data/compliance-map.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

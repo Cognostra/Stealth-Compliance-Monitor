@@ -7,10 +7,10 @@
  * Run: docker-compose up -d zaproxy
  */
 
-import { test, expect } from '../fixtures';
-import { ZapService } from '../../../src/services/ZapService';
-import { logger } from '../../../src/utils/logger';
-import { loadEnvConfig } from '../../../src/config/env';
+import { test, expect } from '../fixtures/index.js';
+import { ZapService } from '../../../src/services/ZapService.js';
+import { logger } from '../../../src/utils/logger.js';
+import { loadEnvConfig } from '../../../src/config/env.js';
 
 test.describe('ZAP Service', () => {
     test.describe('Initialization', () => {

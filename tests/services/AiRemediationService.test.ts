@@ -2,10 +2,11 @@
  * AI Remediation Service Tests
  */
 
-import { AiRemediationService, RemediationRequest, RemediationResponse } from '../../src/services/AiRemediationService';
+import { jest } from '@jest/globals';
+import { AiRemediationService, RemediationRequest, RemediationResponse } from '../../src/services/AiRemediationService.js';
 
 // Mock config
-jest.mock('../../src/config/env', () => ({
+jest.mock('../../src/config/env.js', () => ({
     getConfig: jest.fn(() => ({
         ENABLE_AI: false,
         OPENAI_API_KEY: '',
@@ -13,7 +14,7 @@ jest.mock('../../src/config/env', () => ({
 }));
 
 // Mock logger
-jest.mock('../../src/utils/logger', () => ({
+jest.mock('../../src/utils/logger.js', () => ({
     logger: {
         info: jest.fn(),
         warn: jest.fn(),

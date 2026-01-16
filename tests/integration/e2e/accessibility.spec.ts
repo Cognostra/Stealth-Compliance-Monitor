@@ -5,9 +5,9 @@
  * Uses example.com as a safe public target.
  */
 
-import { test, expect } from '../fixtures';
-import { A11yScanner } from '../../../src/services/A11yScanner';
-import { BrowserService } from '../../../src/services/BrowserService';
+import { test, expect } from '../fixtures/index.js';
+import { A11yScanner } from '../../../src/services/A11yScanner.js';
+import { BrowserService } from '../../../src/services/BrowserService.js';
 
 test.describe('Accessibility Scanner (axe-core)', () => {
     test.describe('Scanner Properties', () => {

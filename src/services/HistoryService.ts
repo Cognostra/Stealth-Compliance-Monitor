@@ -5,8 +5,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { EnvConfig, getConfig } from '../config/env';
-import { logger } from '../utils/logger';
+import { EnvConfig, getConfig } from '../config/env.js';
+import { logger } from '../utils/logger.js';
 
 export interface RunSummary {
     timestamp: string;

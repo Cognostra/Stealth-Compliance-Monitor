@@ -13,7 +13,7 @@ import {
     retryOnErrorTypes,
     PlaywrightRetryPatterns,
     NetworkRetryPatterns
-} from '../../../src/utils/retry';
+} from '../../../src/utils/retry.js';
 
 test.describe('Retry Utility', () => {
     test.describe('retry()', () => {

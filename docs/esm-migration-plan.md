@@ -1,12 +1,12 @@
 # ESM Migration Plan
 
-> **Status:** Planned for v2.0.0  
-> **Tracking Issue:** Create GitHub issue to track progress  
-> **Blocked Packages:** chalk 5+, p-limit 6+, eslint 9+
+> **Status:** ✅ COMPLETED in v2.0.0  
+> **Completed:** January 16, 2026  
+> **Blocked Packages:** Now unblocked - chalk 5+, p-limit 6+, eslint 9+
 
 ## Overview
 
-Several dependencies have moved to ESM-only distribution. This document outlines the migration plan to upgrade to these packages in a future major release.
+This migration converted the project from CommonJS to ES Modules, enabling the use of modern ESM-only packages.
 
 ## Currently Blocked Upgrades
 

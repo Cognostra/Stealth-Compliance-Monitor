@@ -8,7 +8,7 @@
  */
 
 import { FullConfig } from '@playwright/test';
-import { BrowserService } from '../../src/services/BrowserService';
+import { BrowserService } from '../../src/services/BrowserService.js';
 
 async function globalTeardown(config: FullConfig): Promise<void> {
     console.log('\n🧹 Running global teardown...\n');

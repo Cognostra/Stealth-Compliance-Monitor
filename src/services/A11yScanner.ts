@@ -7,7 +7,7 @@
 
 import { Page } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export interface A11yViolation {
     id: string;

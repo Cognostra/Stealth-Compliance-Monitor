@@ -12,7 +12,7 @@
  */
 
 import { BrowserContext, Page, Request, Response } from 'playwright';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SCANNER INTERFACE
@@ -79,11 +79,11 @@ export interface IScanner {
  * Add entries here as scanners are implemented.
  */
 export interface ScannerResultMap {
-    'NetworkSpy': import('../services/NetworkSpy').NetworkIncident[];
-    'SecretScanner': import('../services/SecretScanner').LeakedSecret[];
-    'ConsoleMonitor': import('../services/ConsoleMonitor').ConsoleError[];
-    'SupabaseSecurityScanner': import('../services/SupabaseSecurityScanner').SupabaseSecurityIssue[];
-    'FrontendVulnerabilityScanner': import('../services/FrontendVulnerabilityScanner').VulnerableLibrary[];
+    'NetworkSpy': import('../services/NetworkSpy.js').NetworkIncident[];
+    'SecretScanner': import('../services/SecretScanner.js').LeakedSecret[];
+    'ConsoleMonitor': import('../services/ConsoleMonitor.js').ConsoleError[];
+    'SupabaseSecurityScanner': import('../services/SupabaseSecurityScanner.js').SupabaseSecurityIssue[];
+    'FrontendVulnerabilityScanner': import('../services/FrontendVulnerabilityScanner.js').VulnerableLibrary[];
     [key: string]: unknown;
 }
 

@@ -11,7 +11,7 @@
  * - Max 20 links per page to save time
  */
 
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export interface ValidatedLink {
     url: string;

@@ -15,7 +15,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Page, BrowserContext } from 'playwright';
-import { Logger } from '../types';
+import { Logger } from '../types/index.js';
 
 /**
  * Result of a single custom check

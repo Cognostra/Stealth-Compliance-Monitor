@@ -5,10 +5,10 @@
  * Uses BrowserService for all interactions, ensuring human-like behavior.
  */
 
-import { BrowserService } from './BrowserService';
-import { getConfig, EnvConfig } from '../config/env';
-import { createConfig } from '../config/compliance.config';
-import { logger } from '../utils/logger';
+import { BrowserService } from './BrowserService.js';
+import { getConfig, EnvConfig } from '../config/env.js';
+import { createConfig } from '../config/compliance.config.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Login selectors configuration

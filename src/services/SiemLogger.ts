@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from '../utils/logger';
-import { createConfig } from '../config/compliance.config';
-import { getComplianceTags } from '../data/compliance-map';
+import { logger } from '../utils/logger.js';
+import { createConfig } from '../config/compliance.config.js';
+import { getComplianceTags } from '../data/compliance-map.js';
 
 /**
  * Interface definition for a generic security issue

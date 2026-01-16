@@ -2,7 +2,7 @@
  * Unit Tests for Environment Configuration
  */
 
-import { loadEnvConfig, getConfig, resetConfig, EnvConfig } from '../../src/config/env';
+import { loadEnvConfig, getConfig, resetConfig, EnvConfig } from '../../src/config/env.js';
 
 describe('Environment Configuration', () => {
   beforeEach(() => {

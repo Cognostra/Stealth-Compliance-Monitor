@@ -5,8 +5,8 @@
  * validation, and error handling.
  */
 
-import { test, expect } from '../fixtures';
-import { loadEnvConfig, resetConfig, getConfig } from '../../../src/config/env';
+import { test, expect } from '../fixtures/index.js';
+import { loadEnvConfig, resetConfig, getConfig } from '../../../src/config/env.js';
 
 test.describe('Configuration System', () => {
     test.beforeEach(() => {

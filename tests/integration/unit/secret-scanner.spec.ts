@@ -4,8 +4,8 @@
  * Tests the secret detection patterns and scanning functionality.
  */
 
-import { test, expect } from '../fixtures';
-import { SecretScanner, LeakedSecret } from '../../../src/services/SecretScanner';
+import { test, expect } from '../fixtures/index.js';
+import { SecretScanner, LeakedSecret } from '../../../src/services/SecretScanner.js';
 
 test.describe('Secret Scanner', () => {
     let scanner: SecretScanner;

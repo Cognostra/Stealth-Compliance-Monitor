@@ -12,7 +12,7 @@ import {
     humanDelay,
     createThrottledFunction,
     RateLimiter
-} from '../../../src/utils/throttle';
+} from '../../../src/utils/throttle.js';
 
 test.describe('Throttle Utility', () => {
     test.describe('randomDelay()', () => {

@@ -7,10 +7,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from '../utils/logger';
-import { getConfig } from '../config/env';
-import { PageCrawlResult } from './CrawlerService';
-import { A11yViolation } from './A11yScanner';
+import { logger } from '../utils/logger.js';
+import { getConfig } from '../config/env.js';
+import { PageCrawlResult } from './CrawlerService.js';
+import { A11yViolation } from './A11yScanner.js';
 
 /**
  * Interface representing the full report data structure

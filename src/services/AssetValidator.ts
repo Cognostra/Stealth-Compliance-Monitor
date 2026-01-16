@@ -10,7 +10,7 @@
  */
 
 import { Page } from 'playwright';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export interface AssetCheckResult {
     brokenImages: string[];

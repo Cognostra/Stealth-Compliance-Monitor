@@ -9,7 +9,7 @@
  *   await retry(() => zapService.getAlerts(), { retries: 5, baseDelay: 1000 });
  */
 
-import { Logger } from '../types';
+import { Logger } from '../types/index.js';
 
 /**
  * Retry configuration options

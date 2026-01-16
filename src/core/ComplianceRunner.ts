@@ -5,12 +5,12 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { BrowserService } from '../services/BrowserService';
-import { LighthouseService } from '../services/LighthouseService';
-import { ZapService } from '../services/ZapService';
-import { UserFlowRunner, DEFAULT_FLOWS } from './UserFlowRunner';
-import { ComplianceConfig } from '../config/compliance.config';
-import { logger, logSection, logStep, logSuccess, logFailure, logWarning } from '../utils/logger';
+import { BrowserService } from '../services/BrowserService.js';
+import { LighthouseService } from '../services/LighthouseService.js';
+import { ZapService } from '../services/ZapService.js';
+import { UserFlowRunner, DEFAULT_FLOWS } from './UserFlowRunner.js';
+import { ComplianceConfig } from '../config/compliance.config.js';
+import { logger, logSection, logStep, logSuccess, logFailure, logWarning } from '../utils/logger.js';
 import {
     AuditReport,
     PerformanceMetrics,
@@ -18,7 +18,7 @@ import {
     SecurityMetrics,
     SecurityHeader,
     UserFlowResult,
-} from '../types';
+} from '../types/index.js';
 
 /**
  * Score thresholds for pass/fail

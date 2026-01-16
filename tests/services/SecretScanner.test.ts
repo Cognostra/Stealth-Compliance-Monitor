@@ -4,7 +4,7 @@
  * Tests the secret detection patterns for various credential types.
  */
 
-import { SecretScanner, LeakedSecret } from '../../src/services/SecretScanner';
+import { SecretScanner, LeakedSecret } from '../../src/services/SecretScanner.js';
 
 describe('SecretScanner', () => {
   let scanner: SecretScanner;

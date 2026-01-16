@@ -5,7 +5,7 @@
  */
 
 import { test, expect } from '@playwright/test';
-import { BrowserService } from '../../src/services/BrowserService';
+import { BrowserService } from '../../../src/services/BrowserService.js';
 import * as fs from 'fs';
 import * as path from 'path';
 

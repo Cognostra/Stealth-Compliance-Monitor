@@ -16,10 +16,10 @@
  * - Heavy rate limiting between scan phases
  */
 
-import { SecurityAlert, Logger } from '../types';
-import { EnvConfig } from '../config/env';
-import { retryNetwork } from '../utils/retry';
-import { sleep, humanDelay } from '../utils/throttle';
+import { SecurityAlert, Logger } from '../types/index.js';
+import { EnvConfig } from '../config/env.js';
+import { retryNetwork } from '../utils/retry.js';
+import { sleep, humanDelay } from '../utils/throttle.js';
 
 /**
  * Active scan progress status

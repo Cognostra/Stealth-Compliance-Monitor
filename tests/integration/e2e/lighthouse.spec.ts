@@ -5,9 +5,9 @@
  * Uses example.com as a safe public target.
  */
 
-import { test, expect } from '../fixtures';
-import { LighthouseService } from '../../../src/services/LighthouseService';
-import { logger } from '../../../src/utils/logger';
+import { test, expect } from '../fixtures/index.js';
+import { LighthouseService } from '../../../src/services/LighthouseService.js';
+import { logger } from '../../../src/utils/logger.js';
 
 test.describe('Lighthouse Service', () => {
     test.describe('Audit Execution', () => {

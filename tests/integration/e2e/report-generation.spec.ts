@@ -4,8 +4,8 @@
  * Tests HTML and JSON report generation functionality.
  */
 
-import { test, expect } from '../fixtures';
-import { HtmlReportGenerator } from '../../../src/services/HtmlReportGenerator';
+import { test, expect } from '../fixtures/index.js';
+import { HtmlReportGenerator } from '../../../src/services/HtmlReportGenerator.js';
 import * as fs from 'fs';
 import * as path from 'path';
 

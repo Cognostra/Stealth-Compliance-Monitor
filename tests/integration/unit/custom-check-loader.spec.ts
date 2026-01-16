@@ -7,7 +7,7 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
-import { CustomCheckLoader, CustomCheckContext, CustomCheckViolation } from '../../../src/core/CustomCheckLoader';
+import { CustomCheckLoader, CustomCheckContext, CustomCheckViolation } from '../../../src/core/CustomCheckLoader.js';
 import { Page } from 'playwright';
 
 // Mock logger

@@ -3,8 +3,8 @@
  * Executes predefined user flows (Login -> Dashboard -> Logout)
  */
 
-import { BrowserService } from '../services/BrowserService';
-import { UserFlow, UserFlowResult, FlowStepResult, FlowStep, Logger } from '../types';
+import { BrowserService } from '../services/BrowserService.js';
+import { UserFlow, UserFlowResult, FlowStepResult, FlowStep, Logger } from '../types/index.js';
 
 /**
  * Default user flows for testing

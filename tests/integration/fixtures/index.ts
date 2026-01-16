@@ -6,14 +6,14 @@
  */
 
 import { test as base, expect } from '@playwright/test';
-import { BrowserService } from '../../../src/services/BrowserService';
-import { ZapService } from '../../../src/services/ZapService';
-import { LighthouseService } from '../../../src/services/LighthouseService';
-import { SecretScanner } from '../../../src/services/SecretScanner';
-import { NetworkSpy } from '../../../src/services/NetworkSpy';
-import { A11yScanner } from '../../../src/services/A11yScanner';
-import { loadEnvConfig, resetConfig, EnvConfig } from '../../../src/config/env';
-import { logger } from '../../../src/utils/logger';
+import { BrowserService } from '../../../src/services/BrowserService.js';
+import { ZapService } from '../../../src/services/ZapService.js';
+import { LighthouseService } from '../../../src/services/LighthouseService.js';
+import { SecretScanner } from '../../../src/services/SecretScanner.js';
+import { NetworkSpy } from '../../../src/services/NetworkSpy.js';
+import { A11yScanner } from '../../../src/services/A11yScanner.js';
+import { loadEnvConfig, resetConfig, EnvConfig } from '../../../src/config/env.js';
+import { logger } from '../../../src/utils/logger.js';
 
 /**
  * Test fixture types

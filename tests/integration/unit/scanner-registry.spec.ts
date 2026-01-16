@@ -4,8 +4,8 @@
  * Tests the observer pattern implementation for scanner management.
  */
 
-import { test, expect } from '../fixtures';
-import { ScannerRegistry, IScanner } from '../../../src/core/ScannerRegistry';
+import { test, expect } from '../fixtures/index.js';
+import { ScannerRegistry, IScanner } from '../../../src/core/ScannerRegistry.js';
 
 // Mock scanner for testing
 class MockScanner implements IScanner {

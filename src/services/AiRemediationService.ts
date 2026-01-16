@@ -3,8 +3,8 @@
  * Generates context-aware code fixes using OpenAI with enhanced capabilities
  */
 
-import { EnvConfig, getConfig } from '../config/env';
-import { logger } from '../utils/logger';
+import { EnvConfig, getConfig } from '../config/env.js';
+import { logger } from '../utils/logger.js';
 
 export interface RemediationRequest {
     /** Type of issue (e.g., 'XSS', 'SQLi', 'a11y-contrast') */

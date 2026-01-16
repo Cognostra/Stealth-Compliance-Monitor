@@ -17,10 +17,10 @@
  */
 
 import { APIRequestContext, request as playwrightRequest, BrowserContext } from 'playwright';
-import { Logger } from '../types';
-import { EnvConfig } from '../config/env';
-import { retryNetwork } from '../utils/retry';
-import { humanDelay } from '../utils/throttle';
+import { Logger } from '../types/index.js';
+import { EnvConfig } from '../config/env.js';
+import { retryNetwork } from '../utils/retry.js';
+import { humanDelay } from '../utils/throttle.js';
 
 /**
  * Discovered API endpoint

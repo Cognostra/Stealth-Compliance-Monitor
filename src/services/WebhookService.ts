@@ -1,5 +1,5 @@
-import { createConfig } from '../config/compliance.config';
-import { logger } from '../utils/logger';
+import { createConfig } from '../config/compliance.config.js';
+import { logger } from '../utils/logger.js';
 import * as crypto from 'crypto';
 
 /**

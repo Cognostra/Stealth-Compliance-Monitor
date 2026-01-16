@@ -2,7 +2,8 @@
  * Unit Tests for ScannerRegistry (Observer Pattern)
  */
 
-import { ScannerRegistry, IScanner } from '../../src/core/ScannerRegistry';
+import { jest } from '@jest/globals';
+import { ScannerRegistry, IScanner } from '../../src/core/ScannerRegistry.js';
 
 // Mock scanner for testing
 class MockScanner implements IScanner {

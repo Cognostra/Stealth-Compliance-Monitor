@@ -5,7 +5,7 @@
 
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
-import { PerformanceMetrics, AccessibilityMetrics, Logger } from '../types';
+import { PerformanceMetrics, AccessibilityMetrics, Logger } from '../types/index.js';
 
 export class LighthouseService {
     private readonly logger: Logger;

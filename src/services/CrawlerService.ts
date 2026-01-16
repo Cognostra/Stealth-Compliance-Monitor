@@ -21,18 +21,18 @@
 
 import pLimit from 'p-limit';
 import { Page } from 'playwright';
-import { BrowserService, ConsoleError } from './BrowserService';
-import { VisualSentinel, VisualTestResult } from './VisualSentinel';
-import { AssetValidator, AssetCheckResult } from './AssetValidator';
-import { LinkChecker, LinkCheckResult } from './LinkChecker';
-import { SEOValidator, SEOResult } from './SEOValidator';
-import { InteractionTester, InteractionTestResult } from './InteractionTester';
-import { ResilienceTester, ResilienceCheckResult } from './ResilienceTester';
-import { A11yScanner, A11yResult } from './A11yScanner';
-import { PersistenceService } from './PersistenceService';
-import { EnvConfig } from '../config/env';
-import { ComplianceConfig } from '../config/compliance.config';
-import { logger } from '../utils/logger';
+import { BrowserService, ConsoleError } from './BrowserService.js';
+import { VisualSentinel, VisualTestResult } from './VisualSentinel.js';
+import { AssetValidator, AssetCheckResult } from './AssetValidator.js';
+import { LinkChecker, LinkCheckResult } from './LinkChecker.js';
+import { SEOValidator, SEOResult } from './SEOValidator.js';
+import { InteractionTester, InteractionTestResult } from './InteractionTester.js';
+import { ResilienceTester, ResilienceCheckResult } from './ResilienceTester.js';
+import { A11yScanner, A11yResult } from './A11yScanner.js';
+import { PersistenceService } from './PersistenceService.js';
+import { EnvConfig } from '../config/env.js';
+import { ComplianceConfig } from '../config/compliance.config.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Content validation result

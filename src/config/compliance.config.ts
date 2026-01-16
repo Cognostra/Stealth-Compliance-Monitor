@@ -1,4 +1,4 @@
-import { getConfig, EnvConfig } from './env';
+import { getConfig, EnvConfig } from './env.js';
 
 /**
  * Runtime configuration schema

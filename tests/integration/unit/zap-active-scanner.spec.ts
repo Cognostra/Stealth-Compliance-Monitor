@@ -8,8 +8,8 @@
 import { test, expect } from '@playwright/test';
 
 // Import the service for testing
-import { ZapActiveScanner } from '../../../src/services/ZapActiveScanner';
-import { EnvConfig } from '../../../src/config/env';
+import { ZapActiveScanner } from '../../../src/services/ZapActiveScanner.js';
+import { EnvConfig } from '../../../src/config/env.js';
 
 // Mock logger
 const mockLogger = {

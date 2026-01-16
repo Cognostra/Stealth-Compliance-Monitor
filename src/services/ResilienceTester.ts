@@ -6,7 +6,7 @@
  */
 
 import { Page, CDPSession } from 'playwright';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export interface ResilienceCheckResult {
     feature: string;

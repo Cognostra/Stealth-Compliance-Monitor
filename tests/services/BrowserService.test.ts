@@ -5,8 +5,8 @@
  * These tests focus on initialization logic and error handling.
  */
 
-import { BrowserService } from '../../src/services/BrowserService';
-import { ScannerRegistry } from '../../src/core/ScannerRegistry';
+import { BrowserService } from '../../src/services/BrowserService.js';
+import { ScannerRegistry } from '../../src/core/ScannerRegistry.js';
 
 describe('BrowserService', () => {
   let browserService: BrowserService;

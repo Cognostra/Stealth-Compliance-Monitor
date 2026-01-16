@@ -12,10 +12,10 @@
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
 import { devices } from 'playwright';
-import { getConfig, EnvConfig } from '../config/env';
-import { logger } from '../utils/logger';
-import { persistenceService } from './PersistenceService';
-import { baselineService } from './BaselineService';
+import { getConfig, EnvConfig } from '../config/env.js';
+import { logger } from '../utils/logger.js';
+import { persistenceService } from './PersistenceService.js';
+import { baselineService } from './BaselineService.js';
 
 /**
  * Lighthouse audit scores

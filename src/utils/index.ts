@@ -10,7 +10,7 @@ export {
     logFailure,
     logWarning,
     createChildLogger
-} from './logger';
+} from './logger.js';
 
 export {
     humanDelay,
@@ -18,7 +18,7 @@ export {
     randomDelay,
     RateLimiter,
     createThrottledFunction
-} from './throttle';
+} from './throttle.js';
 
 export {
     retry,
@@ -28,6 +28,6 @@ export {
     retryNetwork,
     PlaywrightRetryPatterns,
     NetworkRetryPatterns,
-} from './retry';
+} from './retry.js';
 
-export type { RetryOptions } from './retry';
+export type { RetryOptions } from './retry.js';

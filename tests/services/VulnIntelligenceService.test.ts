@@ -4,9 +4,10 @@
  * Tests for CVE enrichment, caching, and API integration
  */
 
-import { VulnIntelligenceService, VulnIntelligenceConfig, EnrichedVulnerability, CvssScore } from '../../src/services/VulnIntelligenceService';
-import { VulnerableLibrary } from '../../src/services/FrontendVulnerabilityScanner';
-import { SecurityAlert } from '../../src/types';
+import { jest } from '@jest/globals';
+import { VulnIntelligenceService, VulnIntelligenceConfig, EnrichedVulnerability, CvssScore } from '../../src/services/VulnIntelligenceService.js';
+import { VulnerableLibrary } from '../../src/services/FrontendVulnerabilityScanner.js';
+import { SecurityAlert } from '../../src/types/index.js';
 import * as fs from 'fs';
 import * as path from 'path';
 

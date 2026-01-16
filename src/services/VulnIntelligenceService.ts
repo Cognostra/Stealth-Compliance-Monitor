@@ -23,9 +23,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger } from '../utils/logger';
-import { VulnerableLibrary } from './FrontendVulnerabilityScanner';
-import { SecurityAlert } from '../types';
+import { logger } from '../utils/logger.js';
+import { VulnerableLibrary } from './FrontendVulnerabilityScanner.js';
+import { SecurityAlert } from '../types/index.js';
 
 export interface CvssScore {
     version: '3.1' | '3.0' | '2.0';

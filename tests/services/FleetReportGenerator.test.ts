@@ -2,9 +2,10 @@
  * Fleet Report Generator Tests
  */
 
+import { jest } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
-import { FleetReportGenerator, FleetSiteResult, FleetSummary } from '../../src/services/FleetReportGenerator';
+import { FleetReportGenerator, FleetSiteResult, FleetSummary } from '../../src/services/FleetReportGenerator.js';
 
 // Mock fs
 jest.mock('fs', () => ({
@@ -15,7 +16,7 @@ jest.mock('fs', () => ({
 }));
 
 // Mock logger
-jest.mock('../../src/utils/logger', () => ({
+jest.mock('../../src/utils/logger.js', () => ({
     logger: {
         info: jest.fn(),
         warn: jest.fn(),

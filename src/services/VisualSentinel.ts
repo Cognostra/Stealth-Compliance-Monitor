@@ -14,7 +14,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 export interface VisualTestResult {
     pageName: string;

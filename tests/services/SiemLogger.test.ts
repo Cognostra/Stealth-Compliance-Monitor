@@ -2,15 +2,16 @@
  * SIEM Logger Tests
  */
 
+import { jest } from '@jest/globals';
 import * as fs from 'fs';
-import { SiemLogger, SecurityIssue, EcsEvent } from '../../src/services/SiemLogger';
+import { SiemLogger, SecurityIssue, EcsEvent } from '../../src/services/SiemLogger.js';
 
 // Mock fs module
 jest.mock('fs');
 const mockFs = fs as jest.Mocked<typeof fs>;
 
 // Mock config
-jest.mock('../../src/config/compliance.config', () => ({
+jest.mock('../../src/config/compliance.config.js', () => ({
     createConfig: jest.fn(() => ({
         siem: {
             enabled: true,
@@ -21,12 +22,12 @@ jest.mock('../../src/config/compliance.config', () => ({
 }));
 
 // Mock compliance-map
-jest.mock('../../src/data/compliance-map', () => ({
+jest.mock('../../src/data/compliance-map.js', () => ({
     getComplianceTags: jest.fn(() => ['PCI-DSS', 'OWASP']),
 }));
 
 // Mock logger
-jest.mock('../../src/utils/logger', () => ({
+jest.mock('../../src/utils/logger.js', () => ({
     logger: {
         info: jest.fn(),
         warn: jest.fn(),

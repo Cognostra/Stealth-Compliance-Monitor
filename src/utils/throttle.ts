@@ -3,7 +3,7 @@
  * Human-like delays to prevent WAF blocking
  */
 
-import { Logger } from '../types';
+import { Logger } from '../types/index.js';
 
 /**
  * Generate a random delay between min and max milliseconds

@@ -3,9 +3,9 @@
  * OWASP ZAP passive security scanning (NO ACTIVE ATTACKS)
  */
 
-import { SecurityAlert, Logger } from '../types';
-import { EnvConfig } from '../config/env';
-import { retryNetwork } from '../utils/retry';
+import { SecurityAlert, Logger } from '../types/index.js';
+import { EnvConfig } from '../config/env.js';
+import { retryNetwork } from '../utils/retry.js';
 
 /**
  * ZAP Alert Risk Levels

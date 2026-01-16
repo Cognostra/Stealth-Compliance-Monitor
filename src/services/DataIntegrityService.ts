@@ -10,9 +10,9 @@
  * - Detecting "partial loading" states where frames load but data is missing
  */
 
-import { BrowserService } from './BrowserService';
-import { getConfig, EnvConfig } from '../config/env';
-import { logger } from '../utils/logger';
+import { BrowserService } from './BrowserService.js';
+import { getConfig, EnvConfig } from '../config/env.js';
+import { logger } from '../utils/logger.js';
 
 export interface IntegrityTestResult {
     url: string;

@@ -17,8 +17,8 @@
  */
 
 import { Page, Response } from 'playwright';
-import { IScanner } from '../core/ScannerRegistry';
-import { logger } from '../utils/logger';
+import { IScanner } from '../core/ScannerRegistry.js';
+import { logger } from '../utils/logger.js';
 
 export interface LeakedSecret {
     type: string;

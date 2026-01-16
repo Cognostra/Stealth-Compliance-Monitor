@@ -7,7 +7,7 @@
 
 import { test, expect } from '@playwright/test';
 
-import { PiiScanner } from '../../../src/services/PiiScanner';
+import { PiiScanner } from '../../../src/services/PiiScanner.js';
 
 /**
  * Test helper to access private scanText method

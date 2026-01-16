@@ -2,23 +2,24 @@
  * History Service Tests
  */
 
+import { jest } from '@jest/globals';
 import * as fs from 'fs';
 import * as path from 'path';
-import { HistoryService, RunSummary, TrendAnalysis } from '../../src/services/HistoryService';
+import { HistoryService, RunSummary, TrendAnalysis } from '../../src/services/HistoryService.js';
 
 // Mock fs module
 jest.mock('fs');
 const mockFs = fs as jest.Mocked<typeof fs>;
 
 // Mock config
-jest.mock('../../src/config/env', () => ({
+jest.mock('../../src/config/env.js', () => ({
     getConfig: () => ({
         REPORTS_DIR: './test-reports',
     }),
 }));
 
 // Mock logger
-jest.mock('../../src/utils/logger', () => ({
+jest.mock('../../src/utils/logger.js', () => ({
     logger: {
         info: jest.fn(),
         warn: jest.fn(),

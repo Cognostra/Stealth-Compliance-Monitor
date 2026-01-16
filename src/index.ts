@@ -16,12 +16,12 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { logger, logSection, logSuccess, logFailure } from './utils/logger';
-import { createConfig } from './config/compliance.config';
-import { ComplianceRunner } from './services/ComplianceRunner';
-import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator';
-import { WebhookService } from './services/WebhookService';
-import { ZapActiveScanner } from './services/ZapActiveScanner';
+import { logger, logSection, logSuccess, logFailure } from './utils/logger.js';
+import { createConfig } from './config/compliance.config.js';
+import { ComplianceRunner } from './services/ComplianceRunner.js';
+import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator.js';
+import { WebhookService } from './services/WebhookService.js';
+import { ZapActiveScanner } from './services/ZapActiveScanner.js';
 
 /**
  * Display help message
@@ -238,9 +238,9 @@ async function main(): Promise<void> {
 // PROCESS HANDLERS & GRACEFUL SHUTDOWN
 // ═══════════════════════════════════════════════════════════
 
-import { persistenceService, PersistenceService } from './services/PersistenceService';
-import { HtmlReportGenerator } from './services/HtmlReportGenerator';
-import { BrowserService } from './services/BrowserService';
+import { persistenceService, PersistenceService } from './services/PersistenceService.js';
+import { HtmlReportGenerator } from './services/HtmlReportGenerator.js';
+import { BrowserService } from './services/BrowserService.js';
 
 /**
  * Graceful Shutdown Handler

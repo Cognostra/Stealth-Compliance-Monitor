@@ -3,7 +3,8 @@
  * Runs after environment setup, before each test file
  */
 
-import { resetConfig } from '../src/config/env';
+import { jest } from '@jest/globals';
+import { resetConfig } from '../src/config/env.js';
 
 // Increase timeout for integration tests
 jest.setTimeout(30000);
