@@ -338,7 +338,7 @@ export class ComplianceRunner {
                 { name: 'API Testing', status: this.config.enableApiTesting ? (apiTestResult ? 'ran' : 'failed') : 'skipped' },
                 { name: 'Vulnerability Intel', status: this.config.enableVulnIntel !== false ? (vulnIntelResults ? 'ran' : 'failed') : 'skipped' },
                 { name: 'Custom Checks', status: this.config.enableCustomChecks ? 'ran' : 'skipped' },
-                { name: 'Visual Regression', status: primaryResult.crawlResult?.pageResults?.some(p => p.visualResult) ? 'ran' : 'skipped' },
+                { name: 'Visual Regression', status: primaryResult.crawlResult?.pageResults?.some((p: { visualResult?: unknown }) => p.visualResult) ? 'ran' : 'skipped' },
                 { name: 'Supabase Scanner', status: (primaryResult.supabaseIssues?.length ?? 0) >= 0 ? 'ran' : 'skipped' },
                 { name: 'Secret Scanner', status: (primaryResult.leakedSecrets?.length ?? 0) >= 0 ? 'ran' : 'skipped' }
             ]
