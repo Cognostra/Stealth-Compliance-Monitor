@@ -31,14 +31,6 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Cache Playwright Browsers
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            playwright-${{ runner.os }}-
-
       - name: Install Playwright Browsers
         run: npx playwright install chromium --with-deps
 
@@ -60,13 +52,3 @@ jobs:
           CI: true
           TEST_BASE_URL: https://example.com
           ZAP_PROXY_URL: http://localhost:8080
-
-      - name: Upload ZAP Test Results
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: zap-test-results
-          path: |
-            playwright-report/
-            test-results/
-          retention-days: 7
