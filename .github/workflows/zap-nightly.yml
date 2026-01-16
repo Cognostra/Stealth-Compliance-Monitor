@@ -10,14 +10,6 @@ jobs:
     name: E2E Tests with ZAP (Nightly)
     runs-on: ubuntu-latest
 
-    services:
-      zaproxy:
-        image: zaproxy/zap-stable
-        ports:
-          - 8080:8080
-        options: >-
-          --no-healthcheck
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -33,6 +25,11 @@ jobs:
 
       - name: Install Playwright Browsers
         run: npx playwright install chromium --with-deps
+
+      - name: Start ZAP
+        run: |
+          docker run -d --name zaproxy -p 8080:8080 \
+            zaproxy/zap-stable zap.sh -daemon -host 0.0.0.0 -port 8080
 
       - name: Wait for ZAP to be Ready
         run: |
