@@ -172,7 +172,7 @@ jobs:
 
     services:
       zaproxy:
-        image: ghcr.io/zaproxy/zaproxy:stable
+        image: zaproxy/zap-stable
         ports:
           - 8080:8080
         options: >-

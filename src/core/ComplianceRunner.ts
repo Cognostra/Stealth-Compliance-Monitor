@@ -69,11 +69,11 @@ export class ComplianceRunner {
         
         // Pass debug options to browser service
         const browserOptions: { slowMo?: number; devtools?: boolean } = {};
-        if ((this.config as any).DEBUG_SLOW_MO) {
-            browserOptions.slowMo = (this.config as any).DEBUG_SLOW_MO;
+        if (this.config.DEBUG_SLOW_MO) {
+            browserOptions.slowMo = this.config.DEBUG_SLOW_MO;
         }
-        if ((this.config as any).DEBUG_DEVTOOLS) {
-            browserOptions.devtools = (this.config as any).DEBUG_DEVTOOLS;
+        if (this.config.DEBUG_DEVTOOLS) {
+            browserOptions.devtools = this.config.DEBUG_DEVTOOLS;
         }
         await this.browserService.initialize(browserOptions);
 
@@ -166,10 +166,10 @@ export class ComplianceRunner {
             logger.error('Lighthouse audit failed', { error });
             
             // Capture error state if debug mode is enabled
-            if ((this.config as any).DEBUG_CAPTURE_CONSOLE) {
+            if (this.config.DEBUG_CAPTURE_CONSOLE) {
                 await this.browserService.captureErrorState('lighthouse-audit-failure');
             }
-            if ((this.config as any).DEBUG_PAUSE_ON_FAILURE) {
+            if (this.config.DEBUG_PAUSE_ON_FAILURE) {
                 await this.browserService.debugPause('Lighthouse audit failed - pausing for debugging');
             }
             

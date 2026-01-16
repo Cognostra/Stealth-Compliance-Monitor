@@ -155,7 +155,7 @@ export function createConfig(profileName: string = DEFAULT_PROFILE): ComplianceC
             const url = new URL(firstUrl);
             mainDomain = url.hostname;
         }
-    } catch (e) {
+    } catch {
         // Fallback
     }
 

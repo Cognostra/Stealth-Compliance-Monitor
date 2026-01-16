@@ -14,7 +14,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Page, BrowserContext } from 'playwright';
+import { Page } from 'playwright';
 import { Logger } from '../types/index.js';
 
 /**

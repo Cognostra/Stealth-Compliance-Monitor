@@ -236,19 +236,18 @@ export class AiRemediationService {
      * Call OpenAI API
      */
     private async callOpenAi(prompt: string): Promise<string | null> {
-        try {
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: this.model,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: `You are a senior full-stack engineer and security expert specializing in web application security and accessibility.
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify({
+                model: this.model,
+                messages: [
+                    {
+                        role: 'system',
+                        content: `You are a senior full-stack engineer and security expert specializing in web application security and accessibility.
 Your task is to provide secure, production-ready code fixes.
 Always follow these principles:
 1. Security by default - never trust user input
@@ -268,34 +267,30 @@ EXPLANATION:
 
 ALTERNATIVES:
 [optional alternative approaches]`
-                        },
-                        {
-                            role: 'user',
-                            content: prompt
-                        }
-                    ],
-                    temperature: 0.2, // Low temperature for deterministic code
-                    max_tokens: 1000,
-                })
-            });
+                    },
+                    {
+                        role: 'user',
+                        content: prompt
+                    }
+                ],
+                temperature: 0.2, // Low temperature for deterministic code
+                max_tokens: 1000,
+            })
+        });
 
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`OpenAI API Error: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json() as any;
-            
-            // Track token usage
-            if (data.usage) {
-                this.totalTokensUsed += data.usage.total_tokens;
-            }
-
-            return data.choices[0]?.message?.content?.trim() || null;
-
-        } catch (error) {
-            throw error;
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`OpenAI API Error: ${response.status} - ${errorText}`);
         }
+
+        const data = await response.json() as any;
+        
+        // Track token usage
+        if (data.usage) {
+            this.totalTokensUsed += data.usage.total_tokens;
+        }
+
+        return data.choices[0]?.message?.content?.trim() || null;
     }
 
     /**

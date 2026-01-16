@@ -75,7 +75,7 @@ export class UserFlowRunner {
                 try {
                     const result = await this.browserService.screenshot(`failure_${flow.name.replace(/\s+/g, '_')}`);
                     screenshotPath = result.path;
-                } catch (e) {
+                } catch {
                     this.logger.warn('Failed to capture failure screenshot');
                 }
 
