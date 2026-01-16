@@ -913,13 +913,14 @@ export class HtmlReportGenerator {
         // Process in parallel with concurrency limit (all at once for now as criticals are few)
         await Promise.all(criticalIssues.map(async (issue) => {
             try {
-                const solution = await this.aiService.generateFix({
+                const response = await this.aiService.generateFix({
                     type: issue.category,
                     details: issue.issue,
                     severity: issue.severity,
                     context: `Component: ${issue.component}. Locator: ${issue.playwrightLocator}`
                 });
-                issue.aiSolution = solution;
+                // Extract the code fix from the RemediationResponse
+                issue.aiSolution = response.code;
             } catch (err) {
                 logger.warn(`Failed to generate AI fix for ${issue.id}: ${err}`);
             }

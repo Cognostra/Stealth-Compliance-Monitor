@@ -12,6 +12,22 @@ updates:
       time: "09:00"
       timezone: "America/Chicago"
     open-pull-requests-limit: 10
+    
+    # Ignore packages that require ESM migration or major config changes
+    ignore:
+      # ESM-only packages - require full project migration
+      - dependency-name: "chalk"
+        versions: [">=5.0.0"]
+      - dependency-name: "p-limit"
+        versions: [">=6.0.0"]
+      # ESLint 9 requires flat config migration
+      - dependency-name: "eslint"
+        versions: [">=9.0.0"]
+      - dependency-name: "@typescript-eslint/eslint-plugin"
+        versions: [">=8.0.0"]
+      - dependency-name: "@typescript-eslint/parser"
+        versions: [">=8.0.0"]
+    
     # Group minor and patch updates together
     groups:
       production-dependencies:
