@@ -29,7 +29,10 @@ jobs:
       - name: Start ZAP
         run: |
           docker run -d --name zaproxy -p 8080:8080 \
-            zaproxy/zap-stable zap.sh -daemon -host 0.0.0.0 -port 8080
+            zaproxy/zap-stable zap.sh -daemon -host 0.0.0.0 -port 8080 \
+            -config api.disablekey=true \
+            -config api.addrs.addr.name=.* \
+            -config api.addrs.addr.regex=true
 
       - name: Wait for ZAP to be Ready
         run: |
