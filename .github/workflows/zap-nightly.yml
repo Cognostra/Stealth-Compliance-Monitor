@@ -34,14 +34,21 @@ jobs:
       - name: Wait for ZAP to be Ready
         run: |
           echo "Waiting for ZAP to be fully ready..."
+          ready=0
           for i in {1..30}; do
             if curl -s http://localhost:8080/JSON/core/view/version/ > /dev/null; then
               echo "ZAP is ready!"
+              ready=1
               break
             fi
             echo "Waiting... ($i/30)"
             sleep 2
           done
+          if [ "$ready" -ne 1 ]; then
+            echo "ZAP failed to become ready. Dumping container logs."
+            docker logs zaproxy || true
+            exit 1
+          fi
 
       - name: Run E2E Tests with ZAP
         run: npm run test:zap
