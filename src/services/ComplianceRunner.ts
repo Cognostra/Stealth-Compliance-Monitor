@@ -13,6 +13,7 @@ import { ApiEndpointTester, ApiTestResult } from './ApiEndpointTester.js';
 import { VulnIntelligenceService, EnrichedVulnerability, IntelligenceSummary } from './VulnIntelligenceService.js';
 import { CustomCheckLoader, CustomCheckResult } from '../core/CustomCheckLoader.js';
 import { logger, logSection, logSuccess, logFailure } from '../utils/logger.js';
+import { ProgressReporter } from '../utils/progress.js';
 import { ComplianceConfig } from '../config/compliance.config.js';
 import { FleetSiteResult } from './FleetReportGenerator.js';
 import { SiemLogger } from './SiemLogger.js';
@@ -43,7 +44,7 @@ export class ComplianceRunner {
         this.config = config;
     }
 
-    async run(targetUrl: string): Promise<FleetSiteResult> {
+    async run(targetUrl: string, progress?: ProgressReporter): Promise<FleetSiteResult> {
         const startTime = Date.now();
         const runId = randomUUID();
         const gitSha = process.env.GITHUB_SHA || process.env.GIT_SHA || '';
@@ -61,17 +62,30 @@ export class ComplianceRunner {
         logger.info(`🎯 Target: ${targetUrl}`);
         logger.info(`📱 Devices to scan: ${devicesToScan.join(', ')}`);
 
-        // Step 0: Initialize WAL
-        await persistenceService.init(targetUrl);
-
         // Step 1: Active ZAP Scanning (Global, run once)
         const allowlist = this.config.activeScanAllowlist || [];
         const activeScanAllowed = this.config.activeScanning && (this.config.activeScanAllowed || false) && (
             allowlist.length === 0 || allowlist.some(allowed => targetUrl.includes(allowed) || allowed === targetUrl)
         );
 
+        const perDeviceSteps = 6 + (this.config.enableCustomChecks ? 1 : 0);
+        const totalSteps =
+            1 +
+            (activeScanAllowed ? 1 : 0) +
+            (this.config.enableApiTesting ? 1 : 0) +
+            (devicesToScan.length * perDeviceSteps) +
+            (this.config.enableVulnIntel !== false ? 1 : 0) +
+            2;
+
+        progress?.start(totalSteps, 'Initializing run');
+
+        // Step 0: Initialize WAL
+        await persistenceService.init(targetUrl);
+        progress?.advance('WAL initialized');
+
         if (activeScanAllowed) {
             logSection('Active ZAP Scanning (Spider + Attack)');
+            progress?.update('Active scan', targetUrl);
             const activeScanner = new ZapActiveScanner(this.config, logger);
             try {
                 // Determine bypass auth for scanner if needed (not supported in helper yet)
@@ -92,6 +106,7 @@ export class ComplianceRunner {
             } finally {
                 await activeScanner.cleanup();
             }
+            progress?.advance('Active scan complete');
         } else if (this.config.activeScanning) {
             logger.warn('Active scanning requested but not allowed for this target. Skipping active scan.');
         }
@@ -99,6 +114,7 @@ export class ComplianceRunner {
         // Step 1.5: API Endpoint Testing (Global, run once)
         if (this.config.enableApiTesting) {
             logSection('API Endpoint Security Testing');
+            progress?.update('API testing', targetUrl);
             const apiTester = new ApiEndpointTester(this.config, logger, this.config.activeSecurity);
             try {
                 await apiTester.initialize();
@@ -137,6 +153,7 @@ export class ComplianceRunner {
             } finally {
                 await apiTester.dispose();
             }
+            progress?.advance('API testing complete');
         }
 
         // Step 2: Multi-Device Scanning Loop
@@ -148,7 +165,7 @@ export class ComplianceRunner {
 
         for (const device of devicesToScan) {
             try {
-                const result = await this.scanDevice(targetUrl, device, customCheckLoader, customChecksLoaded);
+                const result = await this.scanDevice(targetUrl, device, customCheckLoader, customChecksLoaded, progress);
                 deviceResults.push(result);
             } catch (error) {
                 logger.error(`Failed to scan device ${device}: ${error}`);
@@ -179,6 +196,7 @@ export class ComplianceRunner {
 
         if (this.config.enableVulnIntel !== false) {
             logSection('Vulnerability Intelligence Enrichment');
+            progress?.update('Vulnerability intelligence', targetUrl);
             const vulnIntelService = new VulnIntelligenceService({
                 nvdApiKey: this.config.nvdApiKey,
                 enrichExploits: this.config.vulnIntelExploits !== false,
@@ -226,6 +244,7 @@ export class ComplianceRunner {
             } catch (intelError) {
                 logger.warn(`Vulnerability intelligence enrichment failed: ${intelError instanceof Error ? intelError.message : String(intelError)}`);
             }
+            progress?.advance('Vulnerability intelligence complete');
         }
 
         // Aggregate findings for summary
@@ -371,15 +390,19 @@ export class ComplianceRunner {
             fs.mkdirSync(domainReportDir, { recursive: true });
         }
 
+        progress?.update('Generating report');
         htmlReportPath = await htmlReportGenerator.generate(report as Parameters<HtmlReportGenerator['generate']>[0]);
+        progress?.advance('Report generated');
 
         // Generate PDF
         try {
             const pdfReportPath = htmlReportPath.replace('.html', '.pdf');
             await htmlReportGenerator.generatePdf(htmlReportPath, pdfReportPath);
             logger.info(`PDF Report generated: ${pdfReportPath}`);
+            progress?.advance('PDF generated');
         } catch (pdfError) {
             logger.warn(`PDF generation failed: ${pdfError}`);
+            progress?.advance('PDF generation skipped');
         }
 
         // SIEM Log (Use Primary Findings)
@@ -400,6 +423,7 @@ export class ComplianceRunner {
         }
 
         logSuccess(`Scan complete for ${targetUrl}`);
+        progress?.finish('Run complete');
 
         return {
             url: targetUrl,
@@ -415,7 +439,8 @@ export class ComplianceRunner {
         targetUrl: string,
         device: string,
         customCheckLoader?: CustomCheckLoader | null,
-        customChecksLoaded: number = 0
+        customChecksLoaded: number = 0,
+        progress?: ProgressReporter
     ): Promise<DeviceScanResult> {
         logSection(`Starting Scan for Device: ${device}`);
 
@@ -455,6 +480,7 @@ export class ComplianceRunner {
 
         try {
             // Step 1: Init Browser with Device
+            progress?.advance('Initializing browser/proxy', device);
             await browserService.initialize({
                 headless: true,
                 useProxy: runConfig.activeSecurity,
@@ -462,10 +488,12 @@ export class ComplianceRunner {
             });
 
             // Step 2: Auth
+            progress?.advance('Authenticating', device);
             const authResult = await authService.login(targetUrl);
             await persistenceService.log('custom', { event: 'auth_complete', device, success: authResult.success });
 
             // Step 3: Run Audit (Lighthouse)
+            progress?.advance('Running audits', device);
             if (runConfig.activeSecurity) {
                 auditResult = await auditService.runFullAudit(targetUrl, device);
             } else {
@@ -489,6 +517,7 @@ export class ComplianceRunner {
             await persistenceService.log('security_finding', auditResult.security_alerts);
 
             // Step 4: Crawl
+            progress?.advance('Crawling site', device);
             const crawlResult = await crawlerService.crawl();
 
             // Take a screenshot of main page for report
@@ -501,10 +530,12 @@ export class ComplianceRunner {
             }
 
             // Step 5: Integrity
+            progress?.advance('Integrity checks', device);
             const visitedUrls = crawlerService.getVisitedUrls();
             const integrityResult = await integrityService.runIntegrityChecks(visitedUrls);
 
             // Step 5.5: Supabase & Library
+            progress?.advance('Security scanners', device);
             await browserService.runSupabaseSecurityTests();
             const supabaseIssues = browserService.getSupabaseIssues();
 
@@ -533,6 +564,7 @@ export class ComplianceRunner {
                     const checkCount = customCheckLoader ? customChecksLoaded : await loader.loadChecks();
 
                     if (checkCount > 0) {
+                        progress?.advance('Custom checks', device);
                         customCheckResults = await loader.runChecks(page, {
                             targetUrl,
                             currentUrl: page.url(),

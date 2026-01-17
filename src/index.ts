@@ -22,6 +22,7 @@ import { ComplianceRunner } from './services/ComplianceRunner.js';
 import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator.js';
 import { WebhookService } from './services/WebhookService.js';
 import { initDeterministic } from './utils/random.js';
+import { ProgressReporter } from './utils/progress.js';
 
 /**
  * Display help message
@@ -207,7 +208,8 @@ async function main(): Promise<void> {
             logger.info('');
             logger.info(`>>> Processing Target ${i + 1}/${targets.length}: ${target} <<<`);
 
-            const result = await runner.run(target);
+            const progress = new ProgressReporter(`Target ${i + 1}/${targets.length}`);
+            const result = await runner.run(target, progress);
             fleetResults.push(result);
         }
 
