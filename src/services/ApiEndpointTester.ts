@@ -16,10 +16,9 @@
  * Routes requests through ZAP proxy for security scanning.
  */
 
-import { APIRequestContext, request as playwrightRequest, BrowserContext } from 'playwright';
+import { APIRequestContext, request as playwrightRequest } from 'playwright';
 import { Logger } from '../types/index.js';
 import { EnvConfig } from '../config/env.js';
-import { retryNetwork } from '../utils/retry.js';
 import { humanDelay } from '../utils/throttle.js';
 
 /**
@@ -455,7 +454,7 @@ export class ApiEndpointTester {
 
             await noAuthContext.dispose();
 
-        } catch (error) {
+        } catch {
             // Connection errors are expected for some endpoints
         }
     }
@@ -488,7 +487,7 @@ export class ApiEndpointTester {
                 });
             }
 
-        } catch (error) {
+        } catch {
             // Expected for most endpoints
         }
     }
@@ -525,7 +524,7 @@ export class ApiEndpointTester {
                 }
             }
 
-        } catch (error) {
+        } catch {
             // Expected
         }
     }

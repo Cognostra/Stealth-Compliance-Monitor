@@ -41,6 +41,15 @@ export interface BrandingConfig {
     reportTitle?: string;
 }
 
+interface LighthouseMetrics {
+    firstContentfulPaint: number;
+    largestContentfulPaint: number;
+    totalBlockingTime: number;
+    cumulativeLayoutShift: number;
+    speedIndex: number;
+    timeToInteractive: number;
+}
+
 /**
  * Report data structure (matches the output from index.ts)
  */
@@ -122,14 +131,7 @@ interface ReportData {
             seo: number;
             bestPractices: number;
         };
-        metrics: {
-            firstContentfulPaint: number;
-            largestContentfulPaint: number;
-            totalBlockingTime: number;
-            cumulativeLayoutShift: number;
-            speedIndex: number;
-            timeToInteractive: number;
-        };
+        metrics: LighthouseMetrics;
     } | null;
     security_alerts: Array<{
         name: string;
@@ -218,7 +220,7 @@ interface ReportData {
                 seo: number;
                 bestPractices: number;
             };
-            metrics: any;
+            metrics: LighthouseMetrics;
         } | null;
         crawlSummary: {
             pagesVisited: number;
@@ -993,15 +995,36 @@ export class HtmlReportGenerator {
         if (!fs.existsSync(outputDir)) {
             fs.mkdirSync(outputDir, { recursive: true });
         }
-        fs.writeFileSync(outputPath, html, 'utf-8');
+        await this.writeHtmlFile(outputPath, html);
 
         // Also write to dashboard.html for backward compatibility
         const dashboardPath = path.join(this.reportsDir, 'dashboard.html');
-        fs.writeFileSync(dashboardPath, html, 'utf-8');
+        await this.writeHtmlFile(dashboardPath, html);
 
         logger.info(`Remediation Dashboard generated: ${outputPath}`);
         logger.info(`Dashboard also available at: ${dashboardPath}`);
         return outputPath;
+    }
+
+    private async writeHtmlFile(outputPath: string, html: string): Promise<void> {
+        const stream = fs.createWriteStream(outputPath, { encoding: 'utf-8' });
+        const chunkSize = 64 * 1024;
+
+        return new Promise((resolve, reject) => {
+            stream.on('error', reject);
+            stream.on('finish', resolve);
+
+            const writeChunks = async () => {
+                for (let i = 0; i < html.length; i += chunkSize) {
+                    if (!stream.write(html.slice(i, i + chunkSize))) {
+                        await new Promise<void>(drainResolve => stream.once('drain', drainResolve));
+                    }
+                }
+                stream.end();
+            };
+
+            void writeChunks();
+        });
     }
 
     /**
@@ -1031,20 +1054,32 @@ export class HtmlReportGenerator {
      * Note: Uses Partial and adds defaults since WAL may not have all data
      */
     private hydratedSessionToReportData(session: HydratedSession): ReportData {
+        type SecurityAssessmentData = NonNullable<ReportData['security_assessment']>;
+        type SecurityFinding = SecurityAssessmentData['findings'][number];
+        type WalPageResult = {
+            duration?: number;
+            contentValid?: boolean;
+            validation?: { hasErrorIndicator?: boolean; hasStuckSpinner?: boolean };
+        };
+
         const metadata = session.metadata!;
+        const pageResults = session.pageResults as WalPageResult[];
+        const securityFindings = session.securityFindings as SecurityFinding[];
+        const networkIncidents = session.networkIncidents as ReportData['network_incidents'];
+        const leakedSecrets = session.leakedSecrets as ReportData['leaked_secrets'];
+        const supabaseIssues = session.supabaseIssues as ReportData['supabase_issues'];
+        const vulnLibraries = session.vulnLibraries as ReportData['vulnerable_libraries'];
 
         // Calculate total duration from page results
-        const totalDuration = session.pageResults.reduce((sum: number, p: any) => {
+        const totalDuration = pageResults.reduce((sum, p) => {
             return sum + (p.duration || 0);
         }, 0);
 
-        const failedPages = session.pageResults.filter((p: any) => !p.contentValid).length;
-        const suspiciousPages = session.pageResults.filter((p: any) =>
+        const failedPages = pageResults.filter((p) => !p.contentValid).length;
+        const suspiciousPages = pageResults.filter((p) =>
             p.validation?.hasErrorIndicator || p.validation?.hasStuckSpinner
         ).length;
 
-        // Build the report - use 'as any' since WAL recovery may have incomplete data
-        // The report generator handles missing fields gracefully
         const report = {
             meta: {
                 version: metadata.version || '1.0.0',
@@ -1064,7 +1099,7 @@ export class HtmlReportGenerator {
                 failedPages,
                 suspiciousPages,
                 totalConsoleErrors: session.consoleErrors.length,
-                pageResults: session.pageResults as any[],
+                pageResults: pageResults as unknown as ReportData['crawl']['pageResults'],
             },
             integrity: {
                 testsRun: 0,
@@ -1072,8 +1107,8 @@ export class HtmlReportGenerator {
                 failed: 0,
                 results: [],
             },
-            network_incidents: session.networkIncidents as any[],
-            leaked_secrets: session.leakedSecrets as any[],
+            network_incidents: networkIncidents,
+            leaked_secrets: leakedSecrets,
             lighthouse: {
                 scores: { performance: 0, accessibility: 0, seo: 0, bestPractices: 0 },
                 metrics: {
@@ -1086,23 +1121,20 @@ export class HtmlReportGenerator {
                 },
             },
             security_alerts: [],
-            supabase_security: {
-                detected: session.supabaseIssues.length > 0,
-                issues: session.supabaseIssues as any[],
-            },
-            vulnerable_libraries: session.vulnLibraries as any[],
+            supabase_issues: supabaseIssues,
+            vulnerable_libraries: vulnLibraries,
             security_assessment: session.securityFindings.length > 0 ? {
                 target: metadata.startUrl,
                 timestamp: metadata.startTime,
                 duration: totalDuration,
-                findings: session.securityFindings as any[],
+                findings: securityFindings,
                 summary: {
-                    critical: session.securityFindings.filter((f: any) => f.severity === 'critical').length,
-                    high: session.securityFindings.filter((f: any) => f.severity === 'high').length,
-                    medium: session.securityFindings.filter((f: any) => f.severity === 'medium').length,
-                    low: session.securityFindings.filter((f: any) => f.severity === 'low').length,
-                    info: session.securityFindings.filter((f: any) => f.severity === 'info').length,
-                    totalTests: session.securityFindings.length,
+                    critical: securityFindings.filter((f) => f.severity === 'critical').length,
+                    high: securityFindings.filter((f) => f.severity === 'high').length,
+                    medium: securityFindings.filter((f) => f.severity === 'medium').length,
+                    low: securityFindings.filter((f) => f.severity === 'low').length,
+                    info: securityFindings.filter((f) => f.severity === 'info').length,
+                    totalTests: securityFindings.length,
                 },
                 reconnaissance: {
                     endpoints: [],
@@ -1115,13 +1147,13 @@ export class HtmlReportGenerator {
                 performanceScore: 0,
                 accessibilityScore: 0,
                 seoScore: 0,
-                highRiskAlerts: session.securityFindings.filter((f: any) => f.severity === 'high').length,
-                mediumRiskAlerts: session.securityFindings.filter((f: any) => f.severity === 'medium').length,
+                highRiskAlerts: securityFindings.filter((f) => f.severity === 'high').length,
+                mediumRiskAlerts: securityFindings.filter((f) => f.severity === 'medium').length,
                 passedAudit: failedPages === 0 && suspiciousPages === 0,
-                securityCritical: session.securityFindings.filter((f: any) => f.severity === 'critical').length,
-                securityHigh: session.securityFindings.filter((f: any) => f.severity === 'high').length,
-                supabaseIssues: session.supabaseIssues.length,
-                vulnerableLibraries: session.vulnLibraries.length,
+                securityCritical: securityFindings.filter((f) => f.severity === 'critical').length,
+                securityHigh: securityFindings.filter((f) => f.severity === 'high').length,
+                supabaseIssues: supabaseIssues?.length ?? 0,
+                vulnerableLibraries: vulnLibraries?.length ?? 0,
                 crawlPagesInvalid: failedPages,
                 crawlPagesSuspicious: suspiciousPages,
                 integrityFailures: 0,
@@ -1236,7 +1268,6 @@ export class HtmlReportGenerator {
     private buildHeader(report: ReportData, healthScore: number, domain: string): string {
         const gaugeColor = healthScore >= 90 ? '#3fb950' :
             healthScore >= 70 ? '#d29922' : '#f85149';
-        const rotation = (healthScore / 100) * 180 - 90;
 
         return `
         <header class="header">
@@ -1377,7 +1408,7 @@ export class HtmlReportGenerator {
     /**
      * Build individual score card
      */
-    private buildScoreCard(label: string, score: number, type: string): string {
+    private buildScoreCard(label: string, score: number, _type: string): string {
         const scoreClass = score >= 90 ? 'good' : score >= 70 ? 'warning' : 'critical';
         return `
         <div class="score-card score-${scoreClass}">
@@ -1446,13 +1477,6 @@ export class HtmlReportGenerator {
         const endpointCount = assessment?.reconnaissance.endpoints.length || 0;
         const cookieCount = assessment?.reconnaissance.cookies.length || 0;
         const findings = assessment?.findings || [];
-
-        // Group findings by category
-        const findingsByCategory = findings.reduce((acc, f) => {
-            if (!acc[f.category]) acc[f.category] = [];
-            acc[f.category].push(f);
-            return acc;
-        }, {} as Record<string, typeof findings>);
 
         const categoryIcons: Record<string, string> = {
             'sqli': '💉',
@@ -1983,7 +2007,7 @@ export class HtmlReportGenerator {
     /**
      * Build HTML Content
      */
-    private buildHtml(report: ReportData, issues: ArchitectIssue[], healthScore: number, quickWins: ArchitectIssue[], history: any): string {
+    private buildHtml(report: ReportData, issues: ArchitectIssue[], healthScore: number, quickWins: ArchitectIssue[], history: RunSummary[]): string {
         const generationDate = new Date().toLocaleString();
 
         // Calculate Compliance Summary

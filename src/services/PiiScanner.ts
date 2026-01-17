@@ -6,6 +6,7 @@
 import { Page, Response } from 'playwright';
 import { IScanner } from '../core/ScannerRegistry.js';
 import { logger } from '../utils/logger.js';
+import { retry, ScannerRetryOptions } from '../utils/retry.js';
 
 export interface PiiFinding {
     type: 'SSN' | 'CreditCard' | 'PhoneNumber';
@@ -21,6 +22,8 @@ export interface PiiFinding {
 export class PiiScanner implements IScanner {
     readonly name = 'PiiScanner';
     private findings: PiiFinding[] = [];
+    private domScanTimer: NodeJS.Timeout | null = null;
+    private domScanScheduledAt = 0;
     private whitelist: RegExp[] = [
         // Exempt test data (e.g., specific test users or phone numbers)
         /555-01\d{2}/, // Example test phone numbers
@@ -39,7 +42,7 @@ export class PiiScanner implements IScanner {
         creditCard: /\b(?:\d[ -]*?){13,16}\b/g,
 
         // Phone: US Formats (123) 456-7890, 123-456-7890, 123.456.7890, +1 123 456 7890
-        phone: /(?:\+?1[-. ]?)?\(?([2-9][0-8][0-9])\)?[-\. ]?([2-9][0-9]{2})[-\. ]?([0-9]{4})\b/g
+        phone: /(?:\+?1[-. ]?)?\(?([2-9][0-8][0-9])\)?[-. ]?([2-9][0-9]{2})[-. ]?([0-9]{4})\b/g
     };
 
     /**
@@ -48,7 +51,7 @@ export class PiiScanner implements IScanner {
     async onPageCreated(page: Page): Promise<void> {
         // Listen for load event to scan static content
         page.on('load', async () => {
-            await this.scanDom(page);
+            this.scheduleDomScan(page);
         });
 
         // Optional: Periodic scan for dynamic content changes (e.g., every 2s)
@@ -69,10 +72,10 @@ export class PiiScanner implements IScanner {
             }
 
             // Get text body
-            const text = await response.text();
+            const text = await retry(() => response.text(), { ...ScannerRetryOptions, logger });
             this.scanText(text, 'Network', url);
 
-        } catch (error) {
+        } catch {
             // Ignore body read errors (redirects, empty bodies)
         }
     }
@@ -91,6 +94,20 @@ export class PiiScanner implements IScanner {
         } catch (error) {
             logger.warn(`PiiScanner DOM scan failed: ${error}`);
         }
+    }
+
+    private scheduleDomScan(page: Page): void {
+        const now = Date.now();
+        this.domScanScheduledAt = now;
+
+        if (this.domScanTimer) {
+            clearTimeout(this.domScanTimer);
+        }
+
+        this.domScanTimer = setTimeout(async () => {
+            if (this.domScanScheduledAt !== now) return;
+            await this.scanDom(page);
+        }, 250);
     }
 
     /**

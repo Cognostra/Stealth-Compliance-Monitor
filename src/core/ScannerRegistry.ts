@@ -12,6 +12,7 @@
  */
 
 import { BrowserContext, Page, Request, Response } from 'playwright';
+import pLimit from 'p-limit';
 import { logger } from '../utils/logger.js';
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -98,9 +99,13 @@ export interface ScannerResultMap {
  * Manages scanner lifecycle and distributes browser events.
  */
 export class ScannerRegistry {
+    private static readonly REQUEST_CONCURRENCY = 8;
+    private static readonly RESPONSE_CONCURRENCY = 4;
     private scanners: Map<string, IScanner> = new Map();
     private context: BrowserContext | null = null;
     private page: Page | null = null;
+    private requestLimiter = pLimit(ScannerRegistry.REQUEST_CONCURRENCY);
+    private responseLimiter = pLimit(ScannerRegistry.RESPONSE_CONCURRENCY);
 
     /**
      * Register a scanner with the registry.
@@ -246,11 +251,13 @@ export class ScannerRegistry {
     private dispatchRequest(request: Request): void {
         for (const [name, scanner] of this.scanners) {
             if (scanner.onRequest) {
-                try {
-                    scanner.onRequest(request);
-                } catch (error) {
-                    logger.debug(`Scanner "${name}" error in onRequest: ${error}`);
-                }
+                void this.requestLimiter(async () => {
+                    try {
+                        await scanner.onRequest?.(request);
+                    } catch (error) {
+                        logger.debug(`Scanner "${name}" error in onRequest: ${error}`);
+                    }
+                });
             }
         }
     }
@@ -261,11 +268,13 @@ export class ScannerRegistry {
     private dispatchResponse(response: Response): void {
         for (const [name, scanner] of this.scanners) {
             if (scanner.onResponse) {
-                try {
-                    scanner.onResponse(response);
-                } catch (error) {
-                    logger.debug(`Scanner "${name}" error in onResponse: ${error}`);
-                }
+                void this.responseLimiter(async () => {
+                    try {
+                        await scanner.onResponse?.(response);
+                    } catch (error) {
+                        logger.debug(`Scanner "${name}" error in onResponse: ${error}`);
+                    }
+                });
             }
         }
     }

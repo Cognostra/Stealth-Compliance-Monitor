@@ -97,6 +97,10 @@ export interface HydratedSession {
     entryCount: number;
 }
 
+export interface HydrateOptions {
+    include?: Array<keyof HydratedSession>;
+}
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -229,7 +233,7 @@ export class PersistenceService {
      * @param logFilePath - Path to the .jsonl file (optional, uses current session if not provided)
      * @returns Reconstructed session data
      */
-    static hydrate(logFilePath: string): HydratedSession {
+    static hydrate(logFilePath: string, options: HydrateOptions = {}): HydratedSession {
         const session: HydratedSession = {
             metadata: null,
             pageResults: [],
@@ -256,6 +260,27 @@ export class PersistenceService {
             return session;
         }
 
+        const includeSet = new Set<keyof HydratedSession>(options.include ?? [
+            'metadata',
+            'pageResults',
+            'networkIncidents',
+            'leakedSecrets',
+            'consoleErrors',
+            'supabaseIssues',
+            'vulnLibraries',
+            'securityFindings',
+            'securityAssessments',
+            'a11yIssues',
+            'seoIssues',
+            'brokenLinks',
+            'brokenAssets',
+            'visualRegressions',
+            'customCheckViolations',
+            'customEntries',
+            'isComplete',
+            'entryCount',
+        ]);
+
         try {
             const content = fs.readFileSync(logFilePath, 'utf8');
             const lines = content.trim().split('\n').filter(line => line.trim());
@@ -267,58 +292,92 @@ export class PersistenceService {
 
                     switch (entry.type) {
                         case 'session_start':
-                            session.metadata = entry.payload as SessionMetadata;
+                            if (includeSet.has('metadata')) {
+                                session.metadata = entry.payload as SessionMetadata;
+                            }
                             break;
                         case 'session_end':
-                            session.isComplete = true;
+                            if (includeSet.has('isComplete')) {
+                                session.isComplete = true;
+                            }
                             break;
                         case 'page_result':
-                            session.pageResults.push(entry.payload);
+                            if (includeSet.has('pageResults')) {
+                                session.pageResults.push(entry.payload);
+                            }
                             break;
                         case 'network_incident':
-                            session.networkIncidents.push(entry.payload);
+                            if (includeSet.has('networkIncidents')) {
+                                session.networkIncidents.push(entry.payload);
+                            }
                             break;
                         case 'leaked_secret':
-                            session.leakedSecrets.push(entry.payload);
+                            if (includeSet.has('leakedSecrets')) {
+                                session.leakedSecrets.push(entry.payload);
+                            }
                             break;
                         case 'console_error':
-                            session.consoleErrors.push(entry.payload);
+                            if (includeSet.has('consoleErrors')) {
+                                session.consoleErrors.push(entry.payload);
+                            }
                             break;
                         case 'supabase_issue':
-                            session.supabaseIssues.push(entry.payload);
+                            if (includeSet.has('supabaseIssues')) {
+                                session.supabaseIssues.push(entry.payload);
+                            }
                             break;
                         case 'vuln_library':
-                            session.vulnLibraries.push(entry.payload);
+                            if (includeSet.has('vulnLibraries')) {
+                                session.vulnLibraries.push(entry.payload);
+                            }
                             break;
                         case 'security_finding':
-                            session.securityFindings.push(entry.payload);
+                            if (includeSet.has('securityFindings')) {
+                                session.securityFindings.push(entry.payload);
+                            }
                             break;
                         case 'security_assessment':
-                            session.securityAssessments.push(entry.payload);
+                            if (includeSet.has('securityAssessments')) {
+                                session.securityAssessments.push(entry.payload);
+                            }
                             break;
                         case 'a11y_issue':
-                            session.a11yIssues.push(entry.payload);
+                            if (includeSet.has('a11yIssues')) {
+                                session.a11yIssues.push(entry.payload);
+                            }
                             break;
                         case 'seo_issue':
-                            session.seoIssues.push(entry.payload);
+                            if (includeSet.has('seoIssues')) {
+                                session.seoIssues.push(entry.payload);
+                            }
                             break;
                         case 'broken_link':
-                            session.brokenLinks.push(entry.payload);
+                            if (includeSet.has('brokenLinks')) {
+                                session.brokenLinks.push(entry.payload);
+                            }
                             break;
                         case 'broken_asset':
-                            session.brokenAssets.push(entry.payload);
+                            if (includeSet.has('brokenAssets')) {
+                                session.brokenAssets.push(entry.payload);
+                            }
                             break;
                         case 'visual_regression':
-                            session.visualRegressions.push(entry.payload);
+                            if (includeSet.has('visualRegressions')) {
+                                session.visualRegressions.push(entry.payload);
+                            }
                             break;
                         case 'custom_check_violation':
-                            session.customCheckViolations.push(entry.payload);
+                            if (includeSet.has('customCheckViolations')) {
+                                session.customCheckViolations.push(entry.payload);
+                            }
                             break;
                         case 'custom':
-                            session.customEntries.push(entry.payload);
+                            if (includeSet.has('customEntries')) {
+                                session.customEntries.push(entry.payload);
+                            }
                             break;
                     }
-                } catch (parseError) {
+                } catch {
                     logger.warn(`Failed to parse WAL line: ${line.substring(0, 50)}...`);
                 }
             }

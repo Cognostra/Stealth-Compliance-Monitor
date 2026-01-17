@@ -44,6 +44,16 @@ const DEFAULT_OPTIONS: Required<Omit<RetryOptions, 'logger' | 'onRetry'>> = {
 };
 
 /**
+ * Recommended retry defaults for lightweight scanner/network reads
+ */
+export const ScannerRetryOptions: RetryOptions = {
+    retries: 2,
+    baseDelay: 200,
+    maxDelay: 2000,
+    jitter: 0.2,
+};
+
+/**
  * Calculate delay with exponential backoff and jitter
  */
 function calculateDelay(

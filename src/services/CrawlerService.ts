@@ -30,7 +30,6 @@ import { InteractionTester, InteractionTestResult } from './InteractionTester.js
 import { ResilienceTester, ResilienceCheckResult } from './ResilienceTester.js';
 import { A11yScanner, A11yResult } from './A11yScanner.js';
 import { PersistenceService } from './PersistenceService.js';
-import { EnvConfig } from '../config/env.js';
 import { ComplianceConfig } from '../config/compliance.config.js';
 import { logger } from '../utils/logger.js';
 import { randomInt } from '../utils/random.js';
@@ -521,12 +520,10 @@ export class CrawlerService {
             const linkCheckResult = await this.linkChecker.checkLinks(internalLinks, url);
 
             // Queue new high-value links (thread-safe)
-            let newLinksAdded = 0;
             for (const link of highValueLinks) {
                 const normalized = this.normalizeUrl(link);
                 if (!this.visitedUrls.has(normalized) && !this.urlQueue.includes(link)) {
                     this.urlQueue.push(link);
-                    newLinksAdded++;
                 }
             }
 
@@ -609,8 +606,10 @@ export class CrawlerService {
             if (validation.valid && isHomepage && this.linkConfig.enableVisualRegression) {
                 try {
                     const pageName = this.getPageName(url);
-                    const screenshot = await this.browserService.screenshot(`visual_temp_${pageName}`);
-                    visualResult = await this.visualSentinel.checkVisual(pageName, screenshot.path);
+                    const screenshotPath = await this.takeScreenshot(`visual_temp_${pageName}`, false);
+                    if (screenshotPath) {
+                        visualResult = await this.visualSentinel.checkVisual(pageName, screenshotPath);
+                    }
                 } catch (vError) {
                     logger.warn(`Visual check failed: ${vError}`);
                 }
@@ -672,8 +671,7 @@ export class CrawlerService {
             // Take error screenshot
             let screenshotPath: string | undefined;
             try {
-                const result = await this.browserService.screenshot(`error-${this.getPageName(url)}`);
-                screenshotPath = result.path;
+                screenshotPath = await this.takeScreenshot(`error-${this.getPageName(url)}`, true);
             } catch { /* ignore */ }
 
             return {
@@ -700,7 +698,7 @@ export class CrawlerService {
     /**
      * Validate content on a specific page instance
      */
-    private async validateContentOnPage(page: Page, url: string): Promise<ContentValidation> {
+    private async validateContentOnPage(page: Page, _url: string): Promise<ContentValidation> {
         const validation: ContentValidation = {
             valid: true,
             length: 0,
@@ -746,7 +744,7 @@ export class CrawlerService {
                 validation.valid = false;
             }
 
-        } catch (error) {
+        } catch {
             validation.valid = false;
         }
 
@@ -770,7 +768,7 @@ export class CrawlerService {
         if (validation.hasStuckSpinner) {
             logger.warn(`  ⚠ Loading spinner still visible after ${this.linkConfig.spinnerTimeout}ms`);
             validation.valid = false;
-            validation.screenshotPath = await this.takeScreenshot(`suspect-spinner-${this.getPageName(url)}`);
+            validation.screenshotPath = await this.takeScreenshot(`suspect-spinner-${this.getPageName(url)}`, true);
         }
 
         // Step 2: Get body text and check length
@@ -786,7 +784,7 @@ export class CrawlerService {
             logger.warn(`  ⚠ Error indicator found: "${errorFound}"`);
 
             if (!validation.screenshotPath) {
-                validation.screenshotPath = await this.takeScreenshot(`suspect-error-${this.getPageName(url)}`);
+                validation.screenshotPath = await this.takeScreenshot(`suspect-error-${this.getPageName(url)}`, true);
             }
         }
 
@@ -796,7 +794,7 @@ export class CrawlerService {
             logger.warn(`  ⚠ Content suspiciously short: ${validation.length} chars (min: ${this.linkConfig.minContentLength})`);
 
             if (!validation.screenshotPath) {
-                validation.screenshotPath = await this.takeScreenshot(`suspect-short-${this.getPageName(url)}`);
+                validation.screenshotPath = await this.takeScreenshot(`suspect-short-${this.getPageName(url)}`, true);
             }
         }
 
@@ -864,7 +862,11 @@ export class CrawlerService {
     /**
      * Take a screenshot and return the path
      */
-    private async takeScreenshot(name: string): Promise<string | undefined> {
+    private async takeScreenshot(name: string, isIssue: boolean): Promise<string | undefined> {
+        const mode = this.config.screenshotMode ?? 'all';
+        if (mode === 'none') return undefined;
+        if (mode === 'issues' && !isIssue) return undefined;
+
         try {
             const result = await this.browserService.screenshot(name);
             logger.info(`  📸 Screenshot saved: ${result.path}`);

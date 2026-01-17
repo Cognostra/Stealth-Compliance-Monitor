@@ -283,7 +283,11 @@ ALTERNATIVES:
             throw new Error(`OpenAI API Error: ${response.status} - ${errorText}`);
         }
 
-        const data = await response.json() as any;
+        type OpenAiChatResponse = {
+            choices?: Array<{ message?: { content?: string } }>;
+            usage?: { total_tokens?: number };
+        };
+        const data = await response.json() as OpenAiChatResponse;
         
         // Track token usage
         if (data.usage) {

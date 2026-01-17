@@ -452,7 +452,6 @@ export class ReportGenerator {
                 if (images.length > 0) {
                     md += 'Recent screenshots captured during execution:\n\n';
                     images.slice(0, 5).forEach(img => {
-                        const imgPath = path.join(screenshotsDir, img);
                         // Use relative path for markdown if report is in root or strict logical link
                         // Trying relative from reports dir to screenshots dir
                         const relativePath = `../screenshots/${img}`;

@@ -96,6 +96,21 @@ interface DiscordMessage {
     }>;
 }
 
+interface ScanSummary {
+    healthScore?: number | string;
+    securityCritical?: number;
+    securityHigh?: number;
+    highRiskAlerts?: number;
+    mediumRiskAlerts?: number;
+    performanceScore?: number;
+    accessibilityScore?: number;
+    seoScore?: number;
+    securityScore?: number;
+    vulnerableLibraries?: number;
+    leakedSecrets?: number;
+    a11yViolations?: number;
+}
+
 /**
  * Result of webhook delivery
  */
@@ -123,7 +138,7 @@ export class WebhookService {
      * @param comparison - Optional comparison with previous scan
      */
     static async sendAlert(
-        scanSummary: any, 
+        scanSummary: ScanSummary,
         targetUrl: string, 
         reportPath: string,
         comparison?: WebhookPayload['comparison']
@@ -191,7 +206,7 @@ export class WebhookService {
         // Detect webhook type and format message
         const webhookUrl = config.webhook.url;
         let formattedPayload: unknown;
-        let contentType = 'application/json';
+        const contentType = 'application/json';
 
         if (WebhookService.isSlackWebhook(webhookUrl)) {
             formattedPayload = WebhookService.formatForSlack(payload);

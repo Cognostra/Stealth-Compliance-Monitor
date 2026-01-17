@@ -326,7 +326,7 @@ export class AuthService {
             const result = await this.browserService.screenshot(name);
             logger.info(`Failure screenshot saved: ${result.path}`);
             return result.path;
-        } catch (e) {
+        } catch {
             logger.warn('Failed to capture failure screenshot');
             return undefined;
         }

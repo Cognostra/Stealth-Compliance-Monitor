@@ -3,12 +3,11 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { BrowserService } from './BrowserService.js';
 import { AuthService } from './AuthService.js';
-import { AuditService } from './AuditService.js';
-import { CrawlerService } from './CrawlerService.js';
-import { DataIntegrityService } from './DataIntegrityService.js';
-import { ReportGenerator } from './ReportGenerator.js';
+import { AuditService, AuditResult } from './AuditService.js';
+import { CrawlerService, CrawlSessionResult } from './CrawlerService.js';
+import { DataIntegrityService, IntegritySessionResult } from './DataIntegrityService.js';
 import { HtmlReportGenerator, BrandingConfig } from './HtmlReportGenerator.js';
-import { SecurityAssessment } from './SecurityAssessment.js';
+import { SecurityAssessment, SecurityAssessmentResult } from './SecurityAssessment.js';
 import { ZapActiveScanner, ActiveScanResult } from './ZapActiveScanner.js';
 import { ApiEndpointTester, ApiTestResult } from './ApiEndpointTester.js';
 import { VulnIntelligenceService, EnrichedVulnerability, IntelligenceSummary } from './VulnIntelligenceService.js';
@@ -18,18 +17,22 @@ import { ComplianceConfig } from '../config/compliance.config.js';
 import { FleetSiteResult } from './FleetReportGenerator.js';
 import { SiemLogger } from './SiemLogger.js';
 import { persistenceService } from './PersistenceService.js';
+import { SupabaseSecurityIssue } from './SupabaseSecurityScanner.js';
+import { VulnerableLibrary } from './FrontendVulnerabilityScanner.js';
+import { NetworkIncident } from './NetworkSpy.js';
+import { LeakedSecret } from './SecretScanner.js';
 
 interface DeviceScanResult {
     device: string;
-    auditResult: any;
-    crawlResult: any;
-    integrityResult: any;
+    auditResult: AuditResult;
+    crawlResult: CrawlSessionResult;
+    integrityResult: IntegritySessionResult;
     customCheckResults: CustomCheckResult[];
-    supabaseIssues: any[];
-    vulnerableLibraries: any[];
-    securityResult: any;
-    networkIncidents: any[];
-    leakedSecrets: any[];
+    supabaseIssues: SupabaseSecurityIssue[];
+    vulnerableLibraries: VulnerableLibrary[];
+    securityResult: SecurityAssessmentResult | null;
+    networkIncidents: NetworkIncident[];
+    leakedSecrets: LeakedSecret[];
     screenshotPath?: string;
 }
 
@@ -137,11 +140,15 @@ export class ComplianceRunner {
         }
 
         // Step 2: Multi-Device Scanning Loop
+        const customCheckLoader = this.config.enableCustomChecks
+            ? new CustomCheckLoader(logger, this.config.customChecksDir)
+            : null;
+        const customChecksLoaded = customCheckLoader ? await customCheckLoader.loadChecks() : 0;
         const deviceResults: DeviceScanResult[] = [];
 
         for (const device of devicesToScan) {
             try {
-                const result = await this.scanDevice(targetUrl, device);
+                const result = await this.scanDevice(targetUrl, device, customCheckLoader, customChecksLoaded);
                 deviceResults.push(result);
             } catch (error) {
                 logger.error(`Failed to scan device ${device}: ${error}`);
@@ -364,7 +371,7 @@ export class ComplianceRunner {
             fs.mkdirSync(domainReportDir, { recursive: true });
         }
 
-        htmlReportPath = await htmlReportGenerator.generate(report as any);
+        htmlReportPath = await htmlReportGenerator.generate(report as Parameters<HtmlReportGenerator['generate']>[0]);
 
         // Generate PDF
         try {
@@ -404,12 +411,17 @@ export class ComplianceRunner {
         };
     }
 
-    private async scanDevice(targetUrl: string, device: string): Promise<DeviceScanResult> {
+    private async scanDevice(
+        targetUrl: string,
+        device: string,
+        customCheckLoader?: CustomCheckLoader | null,
+        customChecksLoaded: number = 0
+    ): Promise<DeviceScanResult> {
         logSection(`Starting Scan for Device: ${device}`);
 
         const browserService = new BrowserService();
         // Override targetUrl in config for this run
-        const runConfig = { ...this.config, targetUrl: targetUrl };
+        const runConfig: ComplianceConfig = { ...this.config, targetUrl: targetUrl };
         if (runConfig.authBypass) {
             try {
                 const url = new URL(targetUrl);
@@ -418,12 +430,26 @@ export class ComplianceRunner {
         }
 
         const authService = new AuthService(browserService);
-        const crawlerService = new CrawlerService(browserService, { ...runConfig } as any);
+        const crawlerService = new CrawlerService(browserService, runConfig);
         const integrityService = new DataIntegrityService(browserService);
         const auditService = new AuditService();
 
-        let auditResult: any = {};
-        let securityResult: any = null;
+        let auditResult: AuditResult = {
+            lighthouse: null,
+            security_alerts: [],
+            ignored_alerts: [],
+            summary: {
+                performanceScore: 0,
+                accessibilityScore: 0,
+                seoScore: 0,
+                highRiskAlerts: 0,
+                mediumRiskAlerts: 0,
+                passedAudit: false,
+            },
+            timestamp: new Date().toISOString(),
+            targetUrl: targetUrl,
+        };
+        let securityResult: SecurityAssessmentResult | null = null;
         let customCheckResults: CustomCheckResult[] = [];
         let screenshotPath: string | undefined;
 
@@ -501,31 +527,30 @@ export class ComplianceRunner {
             }
 
             // Step 7: Custom Checks
-            if (runConfig.enableCustomChecks) {
-                const customCheckLoader = new CustomCheckLoader(logger, runConfig.customChecksDir);
-                if (page) {
-                    try {
-                        const checkCount = await customCheckLoader.loadChecks();
-                        if (checkCount > 0) {
-                            customCheckResults = await customCheckLoader.runChecks(page, {
-                                targetUrl,
-                                currentUrl: page.url(),
-                                visitedUrls,
-                                logger,
-                                profile: this.config.name
-                            });
-                            // Log violations
-                            for (const res of customCheckResults) {
-                                if (!res.passed) {
-                                    for (const v of res.violations) {
-                                        await persistenceService.log('custom_check_violation', { ...v, device });
-                                    }
+            if (runConfig.enableCustomChecks && page) {
+                try {
+                    const loader = customCheckLoader ?? new CustomCheckLoader(logger, runConfig.customChecksDir);
+                    const checkCount = customCheckLoader ? customChecksLoaded : await loader.loadChecks();
+
+                    if (checkCount > 0) {
+                        customCheckResults = await loader.runChecks(page, {
+                            targetUrl,
+                            currentUrl: page.url(),
+                            visitedUrls,
+                            logger,
+                            profile: this.config.name
+                        });
+                        // Log violations
+                        for (const res of customCheckResults) {
+                            if (!res.passed) {
+                                for (const v of res.violations) {
+                                    await persistenceService.log('custom_check_violation', { ...v, device });
                                 }
                             }
                         }
-                    } catch (checkError) {
-                        logger.error(`Custom checks failed: ${checkError instanceof Error ? checkError.message : String(checkError)}`);
                     }
+                } catch (checkError) {
+                    logger.error(`Custom checks failed: ${checkError instanceof Error ? checkError.message : String(checkError)}`);
                 }
             }
 

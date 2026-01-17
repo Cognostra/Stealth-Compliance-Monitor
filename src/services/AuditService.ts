@@ -209,7 +209,8 @@ export class AuditService {
 
         try {
             // Determine Lighthouse Config
-            let lighthouseConfig: any = LIGHTHOUSE_DESKTOP_CONFIG;
+            type LighthouseConfig = Parameters<typeof lighthouse>[2];
+            let lighthouseConfig: LighthouseConfig = LIGHTHOUSE_DESKTOP_CONFIG;
 
             if (deviceName !== 'desktop') {
                 const device = devices[deviceName];

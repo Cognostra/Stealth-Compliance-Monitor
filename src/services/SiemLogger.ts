@@ -286,7 +286,7 @@ export class SiemLogger {
             const isDatadog = webhookUrl.includes('datadoghq.com');
 
             let body: string;
-            let headers: Record<string, string> = {
+            const headers: Record<string, string> = {
                 'Content-Type': 'application/json',
             };
 

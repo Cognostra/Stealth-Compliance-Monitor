@@ -21,7 +21,6 @@ import { createConfig } from './config/compliance.config.js';
 import { ComplianceRunner } from './services/ComplianceRunner.js';
 import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator.js';
 import { WebhookService } from './services/WebhookService.js';
-import { ZapActiveScanner } from './services/ZapActiveScanner.js';
 import { initDeterministic } from './utils/random.js';
 
 /**
@@ -140,17 +139,17 @@ async function main(): Promise<void> {
 
     // Apply debug mode overrides from CLI flags
     if (headedFlag || debugFlag) {
-        (config as any).DEBUG_HEADED = true;
+        config.DEBUG_HEADED = true;
         logger.info('🔍 Debug: Headed mode enabled');
     }
     if (debugFlag) {
-        (config as any).DEBUG_DEVTOOLS = true;
-        (config as any).DEBUG_PAUSE_ON_FAILURE = true;
-        (config as any).DEBUG_CAPTURE_CONSOLE = true;
+        config.DEBUG_DEVTOOLS = true;
+        config.DEBUG_PAUSE_ON_FAILURE = true;
+        config.DEBUG_CAPTURE_CONSOLE = true;
         logger.info('🔍 Debug: Full debug mode enabled (devtools + pause on failure)');
     }
     if (slowMoValue > 0) {
-        (config as any).DEBUG_SLOW_MO = slowMoValue;
+        config.DEBUG_SLOW_MO = slowMoValue;
         logger.info(`🔍 Debug: SlowMo set to ${slowMoValue}ms`);
     }
 
@@ -283,10 +282,26 @@ async function shutdown(signal: string): Promise<void> {
     if (currentLog && fs.existsSync(currentLog)) {
         try {
             logger.info('Hydrating partial session data...');
-            const session = PersistenceService.hydrate(currentLog);
+            const session = PersistenceService.hydrate(currentLog, {
+                include: [
+                    'metadata',
+                    'pageResults',
+                    'networkIncidents',
+                    'leakedSecrets',
+                    'consoleErrors',
+                    'supabaseIssues',
+                    'vulnLibraries',
+                    'securityAssessments',
+                    'entryCount',
+                    'isComplete',
+                ],
+            });
+
+            type ReportPayload = Parameters<HtmlReportGenerator['generate']>[0];
+            const partialSecurityFindings = session.securityAssessments as unknown as NonNullable<ReportPayload['security_assessment']>['findings'];
 
             // Reconstruct a partial report object
-            const partialReport: any = {
+            const partialReport: ReportPayload = {
                 meta: {
                     version: '1.0.0-partial',
                     generatedAt: new Date().toISOString(),
@@ -299,7 +314,8 @@ async function shutdown(signal: string): Promise<void> {
                     pagesVisited: session.pageResults.length,
                     failedPages: 0,
                     suspiciousPages: 0,
-                    pageResults: session.pageResults
+                    totalConsoleErrors: session.consoleErrors.length,
+                    pageResults: session.pageResults as unknown as ReportPayload['crawl']['pageResults']
                 },
                 integrity: {
                     testsRun: session.entryCount,
@@ -307,20 +323,52 @@ async function shutdown(signal: string): Promise<void> {
                     failed: 0,
                     results: []
                 },
-                network_incidents: session.networkIncidents,
-                leaked_secrets: session.leakedSecrets,
-                supabase_issues: session.supabaseIssues,
-                vulnerable_libraries: session.vulnLibraries,
-                security_assessment: { findings: session.securityAssessments, summary: { critical: 0, high: 0, medium: 0, low: 0, info: 0, totalTests: 0 } },
-                lighthouse: { scores: { performance: 0, accessibility: 0, seo: 0, bestPractices: 0 } },
-                security_alerts: session.securityFindings,
+                network_incidents: session.networkIncidents as ReportPayload['network_incidents'],
+                leaked_secrets: session.leakedSecrets as ReportPayload['leaked_secrets'],
+                supabase_issues: session.supabaseIssues as ReportPayload['supabase_issues'],
+                vulnerable_libraries: session.vulnLibraries as ReportPayload['vulnerable_libraries'],
+                security_assessment: partialSecurityFindings.length > 0 ? {
+                    target: session.metadata?.startUrl || 'unknown',
+                    timestamp: session.metadata?.startTime || new Date().toISOString(),
+                    duration: 0,
+                    findings: partialSecurityFindings,
+                    summary: {
+                        critical: 0,
+                        high: 0,
+                        medium: 0,
+                        low: 0,
+                        info: 0,
+                        totalTests: partialSecurityFindings.length
+                    },
+                    reconnaissance: {
+                        endpoints: [],
+                        authMechanism: 'unknown',
+                        techStack: [],
+                        cookies: []
+                    }
+                } : null,
+                lighthouse: {
+                    scores: { performance: 0, accessibility: 0, seo: 0, bestPractices: 0 },
+                    metrics: {
+                        firstContentfulPaint: 0,
+                        largestContentfulPaint: 0,
+                        totalBlockingTime: 0,
+                        cumulativeLayoutShift: 0,
+                        speedIndex: 0,
+                        timeToInteractive: 0
+                    }
+                },
+                security_alerts: [],
                 summary: {
                     performanceScore: 0,
                     accessibilityScore: 0,
                     seoScore: 0,
                     highRiskAlerts: 0,
                     mediumRiskAlerts: 0,
-                    passedAudit: false
+                    passedAudit: false,
+                    crawlPagesInvalid: 0,
+                    crawlPagesSuspicious: 0,
+                    integrityFailures: 0
                 }
             };
 
@@ -339,7 +387,7 @@ async function shutdown(signal: string): Promise<void> {
     try {
         logger.info('Cleaning up active browser processes...');
         await BrowserService.closeAll();
-    } catch (e) { }
+    } catch { }
 
     logger.info('Shutdown complete.');
     process.exit(0);

@@ -126,17 +126,6 @@ const SQLI_DETECTION_PAYLOADS = [
     { payload: "' UNION SELECT NULL--", description: 'UNION injection probe', errorPattern: /column|type|union/i },
 ];
 
-/**
- * IDOR Test Patterns
- * Tests for unauthorized access to resources by manipulating IDs
- */
-const IDOR_PATTERNS = [
-    { original: '{id}', test: '1', description: 'Sequential ID test' },
-    { original: '{id}', test: '0', description: 'Zero ID boundary' },
-    { original: '{id}', test: '-1', description: 'Negative ID boundary' },
-    { original: '{id}', test: '999999999', description: 'Large ID boundary' },
-    { original: '{uuid}', test: '00000000-0000-0000-0000-000000000000', description: 'Null UUID test' },
-];
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN CLASS
@@ -267,15 +256,19 @@ export class SecurityAssessment {
         try {
             const techStack = await page.evaluate(() => {
                 const detected: string[] = [];
+                const globalWindow = window as Window & {
+                    __NEXT_DATA__?: unknown;
+                    __REACT_DEVTOOLS_GLOBAL_HOOK__?: unknown;
+                };
 
                 // Check for Next.js
                 if (document.querySelector('script[src*="_next"]') ||
-                    (window as any).__NEXT_DATA__) {
+                    globalWindow.__NEXT_DATA__) {
                     detected.push('Next.js');
                 }
 
                 // Check for React
-                if ((window as any).__REACT_DEVTOOLS_GLOBAL_HOOK__ ||
+                if (globalWindow.__REACT_DEVTOOLS_GLOBAL_HOOK__ ||
                     document.querySelector('[data-reactroot]')) {
                     detected.push('React');
                 }
@@ -403,7 +396,7 @@ export class SecurityAssessment {
                         xss.payload
                     );
 
-                    const response = await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+                    await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
                     const content = await page.content();
 
                     // Check if payload is reflected unencoded
@@ -441,7 +434,7 @@ export class SecurityAssessment {
                     const baseUrl = new URL(profileEndpoint.url);
                     const testUrl = `${baseUrl.origin}/profile/${encodeURIComponent(xss.payload)}`;
 
-                    const response = await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+                    await page.goto(testUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
                     const content = await page.content();
 
                     // Check if payload appears in the page (decoded)
@@ -838,7 +831,7 @@ export class SecurityAssessment {
     // HELPER METHODS
     // ═══════════════════════════════════════════════════════════════════════════════
 
-    private analyzeEndpoint(url: string, baseUrl: string): EndpointInfo | null {
+    private analyzeEndpoint(url: string, _baseUrl: string): EndpointInfo | null {
         try {
             const parsed = new URL(url);
             const path = parsed.pathname;
@@ -871,7 +864,7 @@ export class SecurityAssessment {
             const parsed = new URL(url);
 
             // URL parameters
-            for (const [name, value] of parsed.searchParams) {
+            for (const [name] of parsed.searchParams) {
                 const type = this.classifyParameter(name);
                 this.recon.parameters.push({
                     name,

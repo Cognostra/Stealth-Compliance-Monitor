@@ -78,7 +78,6 @@ export class InteractionTester {
             await page.waitForTimeout(2000);
 
             // Verify Results
-            const content = await page.content();
             const hasHappyResult = await page.evaluate((term) => {
                 // Look for the term in visible text, ignoring the input itself
                 // This is a loose check but effective for "generic" sites
@@ -98,9 +97,6 @@ export class InteractionTester {
             await page.waitForTimeout(2000);
 
             // Verify Empty State
-            const contentEmpty = await page.content();
-            const hasNoResultsMsg = /no result|nothing found|0 result/i.test(contentEmpty);
-
             // Or check if the result list is empty/hidden
             // If we don't know the "No Results" text, we check if the Happy Result is GONE.
             // But confirming "ISO" is gone is trivial.

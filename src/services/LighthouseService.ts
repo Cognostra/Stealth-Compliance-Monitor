@@ -3,7 +3,7 @@
  * Performance and accessibility auditing
  */
 
-import lighthouse from 'lighthouse';
+import lighthouse, { type LH } from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
 import { PerformanceMetrics, AccessibilityMetrics, Logger } from '../types/index.js';
 
@@ -64,7 +64,7 @@ export class LighthouseService {
     /**
      * Extract performance metrics from Lighthouse result
      */
-    private extractPerformanceMetrics(lhr: any): PerformanceMetrics {
+    private extractPerformanceMetrics(lhr: LH.Result): PerformanceMetrics {
         const perfCategory = lhr.categories?.performance;
         const audits = lhr.audits || {};
 
@@ -82,14 +82,14 @@ export class LighthouseService {
     /**
      * Extract accessibility metrics from Lighthouse result
      */
-    private extractAccessibilityMetrics(lhr: any): AccessibilityMetrics {
+    private extractAccessibilityMetrics(lhr: LH.Result): AccessibilityMetrics {
         const a11yCategory = lhr.categories?.accessibility;
         const audits = lhr.audits || {};
 
         const issues: AccessibilityMetrics['issues'] = [];
 
         // Get failed accessibility audits
-        Object.entries(audits).forEach(([id, audit]: [string, any]) => {
+        Object.entries(audits).forEach(([id, audit]) => {
             if (
                 audit.scoreDisplayMode === 'binary' &&
                 audit.score === 0 &&
@@ -113,7 +113,7 @@ export class LighthouseService {
     /**
      * Get numeric value from audit result
      */
-    private getAuditNumericValue(audits: any, auditId: string): number {
+    private getAuditNumericValue(audits: Record<string, LH.Audit.Result>, auditId: string): number {
         const audit = audits[auditId];
         if (!audit) return 0;
         return Math.round(audit.numericValue || 0);

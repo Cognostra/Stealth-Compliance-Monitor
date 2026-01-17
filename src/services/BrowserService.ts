@@ -7,7 +7,7 @@
  * REFACTORED: Now uses ScannerRegistry (Observer Pattern) instead of hardcoded scanner dependencies.
  */
 
-import { chromium, Browser, BrowserContext, Page, Response, devices } from 'playwright';
+import { chromium, Browser, BrowserContext, Page, Response, devices, type BrowserContextOptions } from 'playwright';
 import { getConfig, EnvConfig } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { ScannerRegistry, IScanner } from '../core/ScannerRegistry.js';
@@ -208,18 +208,19 @@ export class BrowserService {
         const deviceName = options?.deviceName;
         const slowMo = options?.slowMo ?? debugConfig.slowMo;
         const devtools = options?.devtools ?? debugConfig.devtools;
-        const enableStealth = (getConfig() as any).stealth !== false; // Default true
+        const enableStealth = (this.config as { stealth?: boolean }).stealth !== false; // Default true
 
         // Register default scanners before initialization
         this.registerDefaultScanners();
 
         let userAgent = this.getUserAgent();
         let viewport: { width: number; height: number } | null = { width: 1920, height: 1080 };
-        let deviceConfig: any = {};
+        type DeviceConfig = BrowserContextOptions & { userAgent?: string; viewport?: { width: number; height: number } };
+        let deviceConfig: Partial<DeviceConfig> = {};
 
         // Device Emulation vs Desktop Stealth
         if (deviceName && deviceName !== 'desktop') {
-            const device = devices[deviceName];
+            const device = devices[deviceName] as DeviceConfig | undefined;
             if (device) {
                 logger.info(`📱 Emulating device: ${deviceName}`);
                 deviceConfig = device;
@@ -272,7 +273,7 @@ export class BrowserService {
                 ],
             });
 
-            const contextOptions: any = {
+            const contextOptions: BrowserContextOptions = {
                 userAgent: userAgent,
                 ignoreHTTPSErrors: true,
                 viewport: viewport,
@@ -595,7 +596,7 @@ export class BrowserService {
             });
             return links;
         } catch (error) {
-            logger.warn('Failed to get links from page');
+            logger.warn(`Failed to get links from page: ${error}`);
             return [];
         }
     }
@@ -838,8 +839,6 @@ export class BrowserService {
             return;
         }
 
-        const isHeaded = !this.browser?.contexts()[0]?.browser()?.isConnected?.() === false;
-        
         if (this.config.DEBUG_PAUSE_ON_FAILURE || this.config.DEBUG_HEADED) {
             logger.info(`⏸️  Pausing: ${reason}`);
             logger.info('   Press "Resume" in the browser DevTools or Ctrl+C to continue...');
@@ -847,9 +846,9 @@ export class BrowserService {
             try {
                 // Use Playwright's built-in pause (opens inspector)
                 await this.page.pause();
-            } catch (e) {
+            } catch {
                 // Pause may throw if not in headed mode
-                logger.debug(`Pause not available: ${e}`);
+                logger.debug('Pause not available');
             }
         }
     }

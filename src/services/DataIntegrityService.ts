@@ -72,8 +72,6 @@ export class DataIntegrityService {
         logger.info('═'.repeat(50));
 
         const results: IntegrityTestResult[] = [];
-        const startTime = Date.now();
-
         try {
             // 1. Identify Target URLs
             // We prefer URLs passed from the crawler (high value), specifically looking for 'loadout' or 'weapon' pages
@@ -201,7 +199,6 @@ export class DataIntegrityService {
      * Prioritizes specific loadout pages found during crawl, or defaults to specific targets
      */
     private identifyTargets(discoveredUrls: string[] = []): string[] {
-        const uniqueParams = new Set<string>();
         const targets: string[] = [];
 
         // 1. Add manual high-priority paths

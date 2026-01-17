@@ -12,7 +12,7 @@
  * Implements IScanner for registry-based lifecycle management.
  */
 
-import { BrowserContext, Page, Response } from 'playwright';
+import { Page, Response } from 'playwright';
 import { IScanner } from '../core/ScannerRegistry.js';
 import { logger } from '../utils/logger.js';
 
@@ -134,9 +134,21 @@ export class NetworkSpy implements IScanner {
             const timing = response.request().timing();
             const duration = timing ? (timing.responseEnd - timing.requestStart) : 0;
 
+            if (duration > SPY_CONFIG.slowThreshold) {
+                this.addIncident({
+                    url,
+                    method: request.method(),
+                    type: 'slow_response',
+                    status,
+                    duration,
+                    details: `Response time: ${Math.round(duration)} ms`,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
             // 3. Check payload size via Content-Length header
             const contentLength = response.headers()['content-length'];
-            let size = contentLength ? parseInt(contentLength, 10) : 0;
+            const size = contentLength ? parseInt(contentLength, 10) : 0;
 
             // Heavy Payload Check
             if (size > SPY_CONFIG.largeSizeThreshold) {

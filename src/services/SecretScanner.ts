@@ -19,7 +19,7 @@
 import { Page, Response } from 'playwright';
 import { IScanner } from '../core/ScannerRegistry.js';
 import { logger } from '../utils/logger.js';
-
+import { retry, ScannerRetryOptions } from '../utils/retry.js';
 export interface LeakedSecret {
     type: string;
     fileUrl: string;
@@ -41,7 +41,7 @@ const SECRET_PATTERNS = [
     },
     {
         name: 'AWS Secret Key',
-        regex: /(?:aws_secret|AWS_SECRET)[_A-Z]*['\":\s=]+['\"]?([A-Za-z0-9/+=]{40})['\"]?/gi,
+        regex: /(?:aws_secret|AWS_SECRET)[_A-Z]*['":\s=]+['"]?([A-Za-z0-9/+=]{40})['"]?/gi,
         risk: 'CRITICAL'
     },
 
@@ -60,7 +60,7 @@ const SECRET_PATTERNS = [
     // === Supabase ===
     {
         name: 'Supabase Service Role Key',
-        regex: /(?:service_role|SERVICE_ROLE)[_A-Za-z]*['\":\s=]+['\"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['\"]?/gi,
+        regex: /(?:service_role|SERVICE_ROLE)[_A-Za-z]*['":\s=]+['"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['"]?/gi,
         risk: 'CRITICAL'
     },
 
@@ -79,7 +79,7 @@ const SECRET_PATTERNS = [
     // === Database Connection Strings ===
     {
         name: 'Database Connection String',
-        regex: /(?:postgres|mysql|mongodb|redis):\/\/[^:\s]+:[^@\s]+@[^\s'\"]+/gi,
+        regex: /(?:postgres|mysql|mongodb|redis):\/\/[^:\s]+:[^@\s]+@[^\s'"]+/gi,
         risk: 'CRITICAL'
     },
 
@@ -108,19 +108,19 @@ const SECRET_PATTERNS = [
     },
     {
         name: 'Twilio Auth Token',
-        regex: /(?:twilio|TWILIO)[_A-Za-z]*(?:auth|AUTH)[_A-Za-z]*['\":\s=]+['\"]?([a-f0-9]{32})['\"]?/gi,
+        regex: /(?:twilio|TWILIO)[_A-Za-z]*(?:auth|AUTH)[_A-Za-z]*['":\s=]+['"]?([a-f0-9]{32})['"]?/gi,
         risk: 'HIGH'
     },
 
     // === Generic Secrets ===
     {
         name: 'Hardcoded JWT',
-        regex: /(?:bearer|token|jwt|auth)['\":\s=]+['\"]?(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})['\"]?/gi,
+        regex: /(?:bearer|token|jwt|auth)['":\s=]+['"]?(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})['"]?/gi,
         risk: 'MEDIUM'
     },
     {
         name: 'Generic Secret Assignment',
-        regex: /(?:secret|password|passwd|api_key|apiKey|private_key|auth_token)['\"_A-Za-z]*\s*[:=]\s*['\"]([A-Za-z0-9!@#$%^&*()_+=\-]{16,})['\"](?!\s*\+)/gi,
+        regex: /(?:secret|password|passwd|api_key|apiKey|private_key|auth_token)['"_A-Za-z]*\s*[:=]\s*['"]([A-Za-z0-9!@#$%^&*()_+=-]{16,})['"](?!\s*\+)/gi,
         risk: 'MEDIUM'
     },
 ];
@@ -163,7 +163,7 @@ export class SecretScanner implements IScanner {
                 if (this.isSafeExternal(url)) return;
 
                 try {
-                    const content = await response.text();
+                    const content = await retry(() => response.text(), { ...ScannerRetryOptions, logger });
                     this.scanContent(url, content);
                 } catch (e) {
                     logger.debug(`SecretScanner: Could not read response body for ${url.substring(0, 80)}: ${e instanceof Error ? e.message : String(e)}`);

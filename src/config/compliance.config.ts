@@ -64,6 +64,9 @@ export type ComplianceConfig = EnvConfig & RuntimeProfile & {
     visualBaselineMaxAgeDays?: number;
     visualBaselineAutoApprove?: boolean;
 
+    // Screenshot capture policy
+    screenshotMode?: 'all' | 'issues' | 'none';
+
     // Redaction
     redactionEnabled?: boolean;
     runTag?: string;

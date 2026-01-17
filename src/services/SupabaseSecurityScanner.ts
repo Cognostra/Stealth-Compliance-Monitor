@@ -19,6 +19,7 @@
 import { Page, Response } from 'playwright';
 import { IScanner } from '../core/ScannerRegistry.js';
 import { logger } from '../utils/logger.js';
+import { retry, ScannerRetryOptions } from '../utils/retry.js';
 
 export interface SupabaseSecurityIssue {
     type: 'service_role_leaked' | 'anon_key_exposed' | 'open_storage' | 'rls_bypass_possible' | 'insecure_realtime';
@@ -41,13 +42,14 @@ const SUPABASE_PATTERNS = {
     projectUrl: /https:\/\/([a-z0-9-]+)\.supabase\.co/gi,
 
     // Anon key (expected in client) - JWT starting with eyJ
-    anonKey: /(?:supabase|SUPABASE)(?:_ANON)?_KEY['\":\s=]+['\"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['\"]?/gi,
+    anonKey: /(?:supabase|SUPABASE)(?:_ANON)?_KEY['":\s=]+['"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['"]?/gi,
 
     // Service role key (CRITICAL - should NEVER be in client)
-    serviceRoleKey: /(?:service_role|SERVICE_ROLE|supabase_service)(?:_key)?['\":\s=]+['\"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['\"]?/gi,
+    serviceRoleKey: /(?:service_role|SERVICE_ROLE|supabase_service)(?:_key)?['":\s=]+['"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['"]?/gi,
 
     // Direct service role in createClient call
-    createClientServiceRole: /createClient\s*\(\s*['"][^'"]+['"]\s*,\s*['\"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['\"]?\s*,?\s*\{[^}]*(?:auth|persistSession)/gi,
+    createClientServiceRole: /createClient\s*\(\s*['"][^'"]+['"]\s*,\s*['"]?(eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)['"]?\s*,?\s*\{[^}]*(?:auth|persistSession)/gi,
+    
 };
 
 export class SupabaseSecurityScanner implements IScanner {
@@ -93,10 +95,10 @@ export class SupabaseSecurityScanner implements IScanner {
                 if (this.isExternalCDN(url)) return;
 
                 try {
-                    const content = await response.text();
+                    const content = await retry(() => response.text(), { ...ScannerRetryOptions, logger });
                     this.scanContent(url, content);
-                } catch (e) {
-                    logger.debug(`SupabaseScanner: Could not read ${url.substring(0, 60)}`);
+                } catch (error) {
+                    logger.debug(`SupabaseScanner: Could not read ${url.substring(0, 60)}: ${error}`);
                 }
             }
         } catch (e) {
