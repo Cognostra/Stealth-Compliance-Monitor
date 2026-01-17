@@ -4,11 +4,35 @@
  */
 
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 import { initDeterministic } from '../utils/random.js';
 
-// Load .env file from project root
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+function findProjectRoot(startDir: string): string {
+    let dir = startDir;
+    for (let i = 0; i < 6; i++) {
+        if (fs.existsSync(path.join(dir, 'package.json'))) {
+            return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+    }
+    return process.cwd();
+}
+
+// Load .env file from project root (prefer repo root over cwd)
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = findProjectRoot(moduleDir);
+const rootEnvPath = path.join(projectRoot, '.env');
+const cwdEnvPath = path.resolve(process.cwd(), '.env');
+
+if (fs.existsSync(rootEnvPath)) {
+    dotenv.config({ path: rootEnvPath });
+} else if (fs.existsSync(cwdEnvPath)) {
+    dotenv.config({ path: cwdEnvPath });
+}
 
 /**
  * Application configuration interface
