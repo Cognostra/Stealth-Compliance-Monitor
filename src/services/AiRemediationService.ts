@@ -290,11 +290,11 @@ ALTERNATIVES:
         const data = await response.json() as OpenAiChatResponse;
         
         // Track token usage
-        if (data.usage) {
+        if (data.usage?.total_tokens) {
             this.totalTokensUsed += data.usage.total_tokens;
         }
 
-        return data.choices[0]?.message?.content?.trim() || null;
+        return data.choices?.[0]?.message?.content?.trim() || null;
     }
 
     /**

@@ -241,7 +241,7 @@ async function main(): Promise<void> {
                         performanceScore: 0,
                         accessibilityScore: 0,
                         seoScore: 0,
-                        vulnerableLibraries: []
+                            vulnerableLibraries: 0
                     };
                     await WebhookService.sendAlert(summaryMock, result.url, result.reportPath);
                 }
@@ -306,8 +306,7 @@ async function shutdown(signal: string): Promise<void> {
                     version: '1.0.0-partial',
                     generatedAt: new Date().toISOString(),
                     targetUrl: session.metadata?.startUrl || 'unknown',
-                    duration: 0,
-                    isPartial: true
+                    duration: 0
                 },
                 authentication: { success: false, duration: 0 },
                 crawl: {

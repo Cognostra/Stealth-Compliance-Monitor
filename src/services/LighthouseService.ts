@@ -3,7 +3,7 @@
  * Performance and accessibility auditing
  */
 
-import lighthouse, { type LH } from 'lighthouse';
+import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
 import { PerformanceMetrics, AccessibilityMetrics, Logger } from '../types/index.js';
 
@@ -42,7 +42,7 @@ export class LighthouseService {
                 throw new Error('Lighthouse returned no results');
             }
 
-            const { lhr } = result;
+            const lhr = result.lhr as unknown as LighthouseRunResult;
 
             // Extract performance metrics
             const performance = this.extractPerformanceMetrics(lhr);
@@ -64,7 +64,7 @@ export class LighthouseService {
     /**
      * Extract performance metrics from Lighthouse result
      */
-    private extractPerformanceMetrics(lhr: LH.Result): PerformanceMetrics {
+    private extractPerformanceMetrics(lhr: LighthouseRunResult): PerformanceMetrics {
         const perfCategory = lhr.categories?.performance;
         const audits = lhr.audits || {};
 
@@ -82,7 +82,7 @@ export class LighthouseService {
     /**
      * Extract accessibility metrics from Lighthouse result
      */
-    private extractAccessibilityMetrics(lhr: LH.Result): AccessibilityMetrics {
+    private extractAccessibilityMetrics(lhr: LighthouseRunResult): AccessibilityMetrics {
         const a11yCategory = lhr.categories?.accessibility;
         const audits = lhr.audits || {};
 
@@ -93,7 +93,7 @@ export class LighthouseService {
             if (
                 audit.scoreDisplayMode === 'binary' &&
                 audit.score === 0 &&
-                audit.details?.items?.length > 0
+                (audit.details?.items?.length ?? 0) > 0
             ) {
                 issues.push({
                     id,
@@ -113,7 +113,7 @@ export class LighthouseService {
     /**
      * Get numeric value from audit result
      */
-    private getAuditNumericValue(audits: Record<string, LH.Audit.Result>, auditId: string): number {
+    private getAuditNumericValue(audits: Record<string, LighthouseAuditResult>, auditId: string): number {
         const audit = audits[auditId];
         if (!audit) return 0;
         return Math.round(audit.numericValue || 0);
@@ -146,5 +146,22 @@ export class LighthouseService {
         }
     }
 }
+
+type LighthouseAuditResult = {
+    scoreDisplayMode?: string;
+    score?: number | null;
+    details?: { items?: unknown[] };
+    title?: string;
+    helpText?: string;
+    numericValue?: number;
+};
+
+type LighthouseRunResult = {
+    categories?: {
+        performance?: { score?: number | null };
+        accessibility?: { score?: number | null };
+    };
+    audits?: Record<string, LighthouseAuditResult>;
+};
 
 export default LighthouseService;

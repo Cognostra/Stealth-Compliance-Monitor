@@ -224,8 +224,8 @@ export class BrowserService {
             if (device) {
                 logger.info(`📱 Emulating device: ${deviceName}`);
                 deviceConfig = device;
-                userAgent = device.userAgent;
-                viewport = device.viewport;
+                userAgent = device.userAgent || userAgent;
+                viewport = device.viewport ?? viewport;
             } else {
                 logger.warn(`Device '${deviceName}' not found in Playwright defaults. Falling back to desktop.`);
             }
