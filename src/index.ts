@@ -24,6 +24,9 @@ import { WebhookService } from './services/WebhookService.js';
 import { initDeterministic } from './utils/random.js';
 import { ProgressReporter } from './utils/progress.js';
 
+// v3 imports
+import { parseV3Flags, V3_VERSION, V3IntegrationService, parseGeneratePolicyArgs, generatePolicy } from './v3/index.js';
+
 /**
  * Display help message
  */
@@ -48,6 +51,20 @@ Options:
   --slow-mo=<ms>     Slow down browser actions by specified milliseconds
   --debug            Enable full debug mode (headed + devtools + pause on failure)
 
+  --sarif[=path]     Output SARIF 2.1 format (for GitHub Code Scanning)
+                     Without path: prints to stdout
+                     With path: writes to specified file
+
+  --policy=<path>    Load policy-as-code rules from YAML file
+                     Policies can fail/warn builds based on findings
+
+  --compliance=<fw>  Include compliance framework mapping in report
+                     Frameworks: soc2, gdpr, hipaa (comma-separated)
+
+  --generate-policy=<profile>  Generate a policy template file
+                     Profiles: strict, standard, minimal
+                     Output: .compliance-policy.yml
+
   --help, -h         Show this help message
 
 Profiles:
@@ -56,19 +73,19 @@ Profiles:
   deep         Full assessment (50 pages, black-box probes)
   deep-active  Full active scan (50 pages, ZAP spider + active)
 
-Debug Mode:
-  --headed           Show browser window (disable headless)
-  --slow-mo=500      Add 500ms delay between actions
-  --debug            Combines: headed + devtools + pause on failures
+v3 Features (${V3_VERSION}):
+  SARIF output enables GitHub Code Scanning integration
+  Policy-as-code enables custom pass/fail rules
+  Compliance mapping enables SOC2/GDPR/HIPAA audit evidence
 
 Examples:
   npm start                           # Standard profile
   npm start -- --profile=smoke        # Quick smoke test
   npm start -- --profile=deep         # Deep passive scan
   npm start -- --active               # Active scanning (be careful!)
-  npm start -- --profile=deep-active  # Explicit active profile
-  npm start -- --headed               # Debug with visible browser
-  npm start -- --debug --slow-mo=300  # Full debug mode with slow actions
+  npm start -- --sarif=results.sarif  # Output SARIF for GitHub
+  npm start -- --compliance=soc2,gdpr # Include compliance mapping
+  npm start -- --policy=.compliance-policy.yml  # Custom policy rules
 
 Environment Variables:
   See .env.example for full configuration options.
@@ -91,6 +108,19 @@ async function main(): Promise<void> {
         process.exit(0);
     }
 
+    // Check for --generate-policy command (standalone action)
+    const generatePolicyOptions = parseGeneratePolicyArgs(args);
+    if (generatePolicyOptions) {
+        const result = generatePolicy(generatePolicyOptions);
+        if (result.success) {
+            console.log(`✅ ${result.message}`);
+            process.exit(0);
+        } else {
+            console.error(`❌ ${result.message}`);
+            process.exit(1);
+        }
+    }
+
     const profileArg = args.find(arg => arg.startsWith('--profile='));
     const activeFlag = args.includes('--active');
     let profileName = profileArg ? profileArg.split('=')[1] : 'standard';
@@ -100,6 +130,10 @@ async function main(): Promise<void> {
     const debugFlag = args.includes('--debug');
     const slowMoArg = args.find(arg => arg.startsWith('--slow-mo='));
     const slowMoValue = slowMoArg ? parseInt(slowMoArg.split('=')[1], 10) : 0;
+
+    // Parse v3 feature flags
+    const v3Flags = parseV3Flags(args);
+    const v3Service = new V3IntegrationService();
 
     // If --active flag is set, force deep-active profile
     if (activeFlag && !profileArg) {
@@ -243,7 +277,7 @@ async function main(): Promise<void> {
                         performanceScore: 0,
                         accessibilityScore: 0,
                         seoScore: 0,
-                            vulnerableLibraries: 0
+                        vulnerableLibraries: 0
                     };
                     await WebhookService.sendAlert(summaryMock, result.url, result.reportPath);
                 }
@@ -255,7 +289,99 @@ async function main(): Promise<void> {
 
         // Exit Code Logic
         const anyFailures = fleetResults.some(r => r.status === 'fail');
-        process.exitCode = anyFailures ? 1 : 0;
+        let exitCode = anyFailures ? 1 : 0;
+
+        // ══════════════════════════════════════════════════════════════
+        // V3 Feature Processing
+        // ══════════════════════════════════════════════════════════════
+        if (v3Flags.sarif || v3Flags.policy || v3Flags.compliance) {
+            logSection('v3 Feature Processing');
+            
+            // Load the fleet summary JSON to get detailed findings
+            const fleetSummaryPath = path.join(config.REPORTS_DIR, 'fleet-summary.json');
+            if (fs.existsSync(fleetSummaryPath)) {
+                try {
+                    const summaryData = JSON.parse(fs.readFileSync(fleetSummaryPath, 'utf-8'));
+                    
+                    // Convert fleet summary to AuditReport format for v3 processing
+                    const syntheticReport = {
+                        timestamp: new Date().toISOString(),
+                        targetUrl: targets[0] || '',
+                        duration: totalDuration,
+                        performance: { score: summaryData.summary?.averageScore || 0, firstContentfulPaint: 0, largestContentfulPaint: 0, totalBlockingTime: 0, cumulativeLayoutShift: 0, speedIndex: 0, timeToInteractive: 0 },
+                        accessibility: { score: 0, issues: [] },
+                        security: { score: 0, headers: [], alerts: [], passiveOnly: true },
+                        userFlows: [],
+                        overallScore: summaryData.summary?.averageScore || 0,
+                        passed: !anyFailures,
+                    };
+
+                    // SARIF generation
+                    if (v3Flags.sarif) {
+                        const sarifPath = v3Flags.sarifPath || path.join(config.REPORTS_DIR, 'results.sarif');
+                        const findings = v3Service.convertToFindings(syntheticReport);
+                        const metadata = {
+                            targetUrl: targets[0] || '',
+                            startTime: new Date(Date.now() - totalDuration).toISOString(),
+                            endTime: new Date().toISOString(),
+                            version: V3_VERSION,
+                            profile: profileName,
+                        };
+                        const sarifReporter = new (await import('./v3/reporters/SarifReporter.js')).SarifReporter();
+                        const sarifLog = sarifReporter.generate(findings, metadata);
+                        
+                        // Ensure directory exists
+                        const sarifDir = path.dirname(sarifPath);
+                        if (!fs.existsSync(sarifDir)) {
+                            fs.mkdirSync(sarifDir, { recursive: true });
+                        }
+                        fs.writeFileSync(sarifPath, JSON.stringify(sarifLog, null, 2));
+                        logSuccess(`SARIF report: ${sarifPath}`);
+                    }
+
+                    // Policy evaluation
+                    if (v3Flags.policy && v3Flags.policyPath) {
+                        try {
+                            const findings = v3Service.convertToFindings(syntheticReport);
+                            const { PolicyEngine } = await import('./v3/core/PolicyEngine.js');
+                            const policyEngine = new PolicyEngine();
+                            policyEngine.loadFromFile(v3Flags.policyPath);
+                            
+                            const policyContext = {
+                                findings: findings.map(f => ({ id: f.id, type: f.type, severity: f.severity, title: f.title })),
+                                meta: { targetUrl: targets[0] || '', scanProfile: profileName, duration: totalDuration, timestamp: new Date().toISOString() },
+                            };
+                            const policyResult = policyEngine.evaluate(policyContext);
+                            
+                            if (policyResult.passed) {
+                                logSuccess(`Policy evaluation PASSED (${policyResult.passedPolicies.length} policies)`);
+                            } else {
+                                logFailure(`Policy evaluation FAILED: ${policyResult.failedPolicies.length} policies violated`);
+                                exitCode = Math.max(exitCode, policyResult.exitCode);
+                            }
+                        } catch (policyError) {
+                            logger.error(`Policy evaluation failed: ${policyError instanceof Error ? policyError.message : String(policyError)}`);
+                        }
+                    }
+
+                    // Compliance mapping
+                    if (v3Flags.compliance && v3Flags.complianceFrameworks.length > 0) {
+                        const findings = v3Service.convertToFindings(syntheticReport);
+                        const complianceResult = v3Service.mapCompliance(
+                            findings,
+                            v3Flags.complianceFrameworks.filter(f => f === 'soc2' || f === 'gdpr' || f === 'hipaa') as ('soc2' | 'gdpr' | 'hipaa')[]
+                        );
+                        v3Service.printComplianceSummary(complianceResult);
+                    }
+                } catch (v3Error) {
+                    logger.error(`v3 processing failed: ${v3Error instanceof Error ? v3Error.message : String(v3Error)}`);
+                }
+            } else {
+                logger.warn('Fleet summary not found, skipping v3 processing');
+            }
+        }
+
+        process.exitCode = exitCode;
 
     } catch (error) {
         logFailure(`Fatal Fleet Error: ${error}`);

@@ -104,6 +104,13 @@ export default defineConfig({
                 },
             },
         },
+        // v3 E2E audit tests (CLI-based, no browser needed)
+        {
+            name: 'e2e-v3',
+            testDir: './e2e',
+            testMatch: ['**/*.spec.ts'],
+            use: {},
+        },
     ],
 
     // Output folder for traces, screenshots, videos

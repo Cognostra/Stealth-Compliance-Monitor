@@ -29,6 +29,7 @@
         "test:browser": "npx playwright test --project=chromium",
         "test:e2e": "npx playwright test --project=chromium",
         "test:zap": "npx playwright test --project=e2e-with-zap",
+        "test:e2e-v3": "npx playwright test --project=e2e-v3",
         "test:all": "npm run test && npm run test:integration",
         "report": "npx playwright show-report",
         "report:open": "npx playwright show-report --host 0.0.0.0"
@@ -61,6 +62,7 @@
         "@eslint/js": "^9.18.0",
         "@playwright/test": "^1.40.0",
         "@types/jest": "^30.0.0",
+        "@types/js-yaml": "^4.0.9",
         "@types/node": "^25.0.9",
         "eslint": "^9.18.0",
         "jest": "^30.2.0",

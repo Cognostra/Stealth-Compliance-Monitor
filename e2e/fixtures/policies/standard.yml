@@ -1,0 +1,30 @@
+# Standard Security Policy
+# Balanced approach for CI/CD pipelines
+
+version: "1.0"
+name: standard-security
+
+policies:
+  # Block critical only
+  - name: "No Critical Vulnerabilities"
+    condition: "severity == 'critical'"
+    action: fail
+    message: "Critical vulnerability blocks deployment"
+
+  # Warn on high severity
+  - name: "High Severity Warning"
+    condition: "severity == 'high'"
+    action: warn
+    message: "High severity issue should be addressed soon"
+
+  # Performance budget (more lenient)
+  - name: "Performance Minimum"
+    condition: "lighthouse_performance < 50"
+    action: fail
+    message: "Performance score critically low"
+
+  # Accessibility baseline
+  - name: "Accessibility Baseline"
+    condition: "lighthouse_accessibility < 70"
+    action: warn
+    message: "Accessibility score below recommended threshold"

@@ -1,0 +1,12 @@
+# Minimal Security Policy
+# Only blocks the most severe issues
+
+version: "1.0"
+name: minimal-security
+
+policies:
+  # Only block critical
+  - name: "No Critical Vulnerabilities"
+    condition: "severity == 'critical'"
+    action: fail
+    message: "Critical vulnerability detected"

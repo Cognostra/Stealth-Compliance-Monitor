@@ -1,0 +1,48 @@
+# Strict Security Policy
+# Fails on any critical or high severity findings
+
+version: "1.0"
+name: strict-security
+
+policies:
+  # Block any critical vulnerabilities
+  - name: "No Critical Vulnerabilities"
+    condition: "severity == 'critical'"
+    action: fail
+    message: "Critical vulnerability found - blocking deployment"
+
+  # Block high severity issues
+  - name: "No High Severity Issues"
+    condition: "severity == 'high'"
+    action: fail
+    message: "High severity issue found - requires immediate fix"
+
+  # Warn on medium severity
+  - name: "Medium Severity Warning"
+    condition: "severity == 'medium'"
+    action: warn
+    message: "Medium severity issue found - should be addressed"
+
+  # Performance budget enforcement
+  - name: "Performance Budget"
+    condition: "lighthouse_performance < 70"
+    action: fail
+    message: "Performance score below 70 - optimize before deploying"
+
+  # Accessibility compliance
+  - name: "Accessibility Minimum"
+    condition: "lighthouse_accessibility < 80"
+    action: fail
+    message: "Accessibility score must be at least 80"
+
+  # Security header requirements
+  - name: "Missing HSTS"
+    condition: "type == 'missing-hsts'"
+    action: fail
+    message: "HSTS header is required for production"
+
+  # XSS protection
+  - name: "No XSS Vulnerabilities"
+    condition: "type == 'xss'"
+    action: fail
+    message: "Cross-site scripting vulnerability detected"
