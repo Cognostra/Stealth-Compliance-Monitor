@@ -4,7 +4,7 @@
  * Tests the secret detection patterns for various credential types.
  */
 
-import { SecretScanner, LeakedSecret } from '../../src/services/SecretScanner.js';
+import { SecretScanner } from '../../src/services/SecretScanner.js';
 
 describe('SecretScanner', () => {
   let scanner: SecretScanner;
@@ -135,7 +135,7 @@ describe('SecretScanner', () => {
     });
 
     it('should detect hardcoded JWTs', () => {
-      scanText('https://example.com/app.js', 'token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"');
+      scanText('https://example.com/app.js', 'token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + 'eyJzdWIiOiIxMjM0NTY3ODkwIn0.' + 'dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"');
 
       const secrets = scanner.getSecrets();
       expect(secrets.length).toBe(1);

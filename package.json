@@ -59,7 +59,13 @@
         "playwright": "^1.40.0",
         "pngjs": "^7.0.0",
         "prompts": "^2.4.2",
-        "winston": "^3.11.0"
+        "puppeteer": "^24.1.1",
+        "winston": "^3.11.0",
+        "yargs": "^17.7.2",
+        "zod": "^3.24.1"
+    },
+    "overrides": {
+        "lodash-es": "4.17.23"
     },
     "devDependencies": {
         "@eslint/js": "^9.18.0",

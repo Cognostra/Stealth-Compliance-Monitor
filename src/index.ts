@@ -270,7 +270,11 @@ async function executeAudit(
 
             const progress = new ProgressReporter(`Target ${index + 1}/${targets.length}`);
             try {
-                const result = await runner.run(target, progress);
+                    if (!URL.canParse(target)) {
+               logger.error(`Skipping invalid target URL: ${target}`);
+               return; 
+            }
+            const result = await runner.run(target, progress);
                 
                 // Record trend data
                 trendService.addRecord({
@@ -298,7 +302,8 @@ async function executeAudit(
         }));
 
         // Wait for all scans to complete
-        const results = await Promise.all(scanPromises);
+        // Wait for all scans to complete
+        const results = (await Promise.all(scanPromises)).filter((r): r is FleetSiteResult => r !== undefined);
         fleetResults.push(...results);
 
         // Generate Fleet Report
