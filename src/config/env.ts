@@ -154,6 +154,8 @@ export interface EnvConfig {
     REDACTION_ENABLED: boolean;
     /** Optional run tag for reports/logs */
     RUN_TAG?: string;
+    /** Cron schedule for continuous monitoring */
+    CRON_SCHEDULE?: string;
 }
 
 /**
@@ -344,8 +346,20 @@ export function loadEnvConfig(): EnvConfig {
         VISUAL_BASELINE_MAX_AGE_DAYS: getNumber('VISUAL_BASELINE_MAX_AGE_DAYS', 30),
         VISUAL_BASELINE_AUTO_APPROVE: getOptional('VISUAL_BASELINE_AUTO_APPROVE', 'false').toLowerCase() === 'true',
         REDACTION_ENABLED: getOptional('REDACTION_ENABLED', 'true').toLowerCase() === 'true',
-        RUN_TAG: getOptional('RUN_TAG', '')
+        RUN_TAG: getOptional('RUN_TAG', ''),
+        CRON_SCHEDULE: getOptional('CRON_SCHEDULE', '')
     };
+
+    // Parse Performance Budget
+    const minScore = getNumber('PERFORMANCE_BUDGET_MIN_SCORE', 0);
+    if (minScore > 0) {
+        (config as any).performanceBudget = {
+            minScore,
+            maxLCP: getNumber('PERFORMANCE_BUDGET_MAX_LCP', 0) || undefined,
+            maxCLS: getFloat('PERFORMANCE_BUDGET_MAX_CLS', 0) || undefined,
+            maxTBT: getNumber('PERFORMANCE_BUDGET_MAX_TBT', 0) || undefined,
+        };
+    }
 
     if (config.DETERMINISTIC_MODE) {
         initDeterministic(config.DETERMINISTIC_SEED);

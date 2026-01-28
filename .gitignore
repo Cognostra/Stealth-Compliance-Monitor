@@ -277,3 +277,8 @@ vulnerability-reports/
 trufflehog-results/
 gitleaks-results/
 
+
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │ DOCUMENTATION & PRDs                                                        │
+# └─────────────────────────────────────────────────────────────────────────────┘
+stealth-compliance-monitor-prd.md

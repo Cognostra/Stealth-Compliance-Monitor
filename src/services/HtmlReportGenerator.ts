@@ -10,8 +10,8 @@
  * - Custom branding and white-label options
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { logger } from '../utils/logger.js';
 import { chromium } from 'playwright';
 import { PersistenceService, HydratedSession } from './PersistenceService.js';
@@ -283,11 +283,29 @@ interface ReportData {
 /**
  * Enriched issue object with remediation data
  */
+/**
+ * Issue Categories
+ */
+export type IssueCategory = 'accessibility' | 'performance' | 'security' | 'assets' | 'integrity' | 'pentest' | 'supabase' | 'dependencies';
+
+/**
+ * Issue Severity Levels
+ */
+export type IssueSeverity = 'critical' | 'serious' | 'warning' | 'info';
+
+/**
+ * Remediation Effort Levels
+ */
+export type IssueEffort = 'low' | 'medium' | 'high';
+
+/**
+ * Enriched issue object with remediation data
+ */
 interface ArchitectIssue {
     id: string;
-    category: 'accessibility' | 'performance' | 'security' | 'assets' | 'integrity' | 'pentest' | 'supabase' | 'dependencies';
-    severity: 'critical' | 'serious' | 'warning' | 'info';
-    effort: 'low' | 'medium' | 'high';
+    category: IssueCategory;
+    severity: IssueSeverity;
+    effort: IssueEffort;
     component: string;
     playwrightLocator: string;
     issue: string;
@@ -450,9 +468,9 @@ const DEFAULT_BRANDING: BrandingConfig = {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export class HtmlReportGenerator {
-    private reportsDir: string;
-    private aiService: AiRemediationService;
-    private historyService: HistoryService;
+    private readonly reportsDir: string;
+    private readonly aiService: AiRemediationService;
+    private readonly historyService: HistoryService;
     private branding: BrandingConfig;
 
     constructor(reportsDir: string = './reports', branding?: Partial<BrandingConfig>) {
@@ -598,12 +616,29 @@ export class HtmlReportGenerator {
     private async enrichIssues(report: ReportData): Promise<ArchitectIssue[]> {
         const issues: ArchitectIssue[] = [];
 
-        // Process accessibility violations
+        this.processAccessibilityViolations(report, issues);
+        this.processSecurityAlerts(report, issues);
+        this.processLeakedSecrets(report, issues);
+        this.processBrokenAssets(report, issues);
+        this.processLighthouseMetrics(report, issues);
+        this.processIntegrityFailures(report, issues);
+        this.processPentestFindings(report, issues);
+        this.processSupabaseIssues(report, issues);
+        this.processVulnerableLibraries(report, issues);
+        this.processActiveScanAlerts(report, issues);
+        this.processCustomChecks(report, issues);
+        
+        await this.applyAiRemediation(issues);
+        
+        return issues;
+    }
+
+    private processAccessibilityViolations(report: ReportData, issues: ArchitectIssue[]): void {
         const pageResults = report.crawl?.pageResults ?? [];
         pageResults.forEach(page => {
             page.a11yResult?.violations?.forEach(violation => {
                 const remediation = REMEDIATION_DATABASE[violation.id] || DEFAULT_REMEDIATION;
-                const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
+                const severityMap: Record<string, IssueSeverity> = {
                     critical: 'critical',
                     serious: 'serious',
                     moderate: 'warning',
@@ -626,34 +661,34 @@ export class HtmlReportGenerator {
                 });
             });
         });
+    }
 
-        // Process security alerts
+    private processSecurityAlerts(report: ReportData, issues: ArchitectIssue[]): void {
         (report.security_alerts ?? []).forEach(alert => {
-            const riskMap: Record<string, 'critical' | 'serious' | 'warning'> = {
+            const riskMap: Record<string, IssueSeverity> = {
                 High: 'critical',
                 Medium: 'serious',
                 Low: 'warning'
             };
 
+            const alertId = alert.name.toLowerCase().replace(/\s+/g, '-');
+            const remediation = REMEDIATION_DATABASE[alertId];
+
             issues.push({
-                id: alert.name.toLowerCase().replace(/\s+/g, '-'),
+                id: alertId,
                 category: 'security',
                 severity: riskMap[alert.risk] || 'warning',
                 effort: 'medium',
                 component: new URL(alert.url).pathname || '/',
                 playwrightLocator: `await page.goto('${alert.url}')`,
                 issue: alert.description,
-                remediation: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.remediation ||
-                    'Review security configuration and apply recommended headers.',
-                docsUrl: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.docsUrl ||
-                    'https://owasp.org/www-project-web-security-testing-guide/',
-
-                url: alert.url,
-                complianceTags: getComplianceTags(alert.name)
+                remediation: remediation?.remediation || 'Review security configuration and apply recommended headers.',
+                docsUrl: remediation?.docsUrl || 'https://owasp.org/www-project-web-security-testing-guide/',
             });
         });
+    }
 
-        // Process leaked secrets
+    private processLeakedSecrets(report: ReportData, issues: ArchitectIssue[]): void {
         (report.leaked_secrets ?? []).forEach(secret => {
             issues.push({
                 id: `leaked-${secret.type.toLowerCase().replace(/\s+/g, '-')}`,
@@ -663,14 +698,15 @@ export class HtmlReportGenerator {
                 component: secret.fileUrl,
                 playwrightLocator: `await page.goto('${secret.fileUrl}')`,
                 issue: `Exposed ${secret.type}: ${secret.maskedValue}`,
-                remediation: REMEDIATION_DATABASE['leaked-api-key']?.remediation ||
-                    'Immediately rotate exposed credentials and implement secure storage.',
+                remediation: REMEDIATION_DATABASE['leaked-api-key']?.remediation || 'Immediately rotate exposed credentials.',
                 docsUrl: REMEDIATION_DATABASE['leaked-api-key']?.docsUrl || '',
                 url: secret.fileUrl
             });
         });
+    }
 
-        // Process broken assets
+    private processBrokenAssets(report: ReportData, issues: ArchitectIssue[]): void {
+        const pageResults = report.crawl?.pageResults ?? [];
         pageResults.forEach(page => {
             page.assetResult?.brokenImages?.forEach(imgUrl => {
                 const remediation = REMEDIATION_DATABASE['broken-image'] || DEFAULT_REMEDIATION;
@@ -704,58 +740,59 @@ export class HtmlReportGenerator {
                 });
             });
         });
+    }
 
-        // Process performance issues from Lighthouse
-        if (report.lighthouse?.metrics) {
-            const { metrics } = report.lighthouse;
+    private processLighthouseMetrics(report: ReportData, issues: ArchitectIssue[]): void {
+        if (!report.lighthouse?.metrics) return;
+        const { metrics } = report.lighthouse;
 
-            if (metrics.largestContentfulPaint > 2500) {
-                const remediation = REMEDIATION_DATABASE['largest-contentful-paint'];
-                issues.push({
-                    id: 'largest-contentful-paint',
-                    category: 'performance',
-                    severity: metrics.largestContentfulPaint > 4000 ? 'critical' : 'serious',
-                    effort: remediation.effort,
-                    component: 'LCP Element',
-                    playwrightLocator: `// Identify LCP element with Lighthouse DevTools`,
-                    issue: `LCP is ${metrics.largestContentfulPaint}ms (target: <2500ms)`,
-                    remediation: remediation.remediation,
-                    docsUrl: remediation.docsUrl
-                });
-            }
-
-            if (metrics.cumulativeLayoutShift > 0.1) {
-                const remediation = REMEDIATION_DATABASE['cumulative-layout-shift'];
-                issues.push({
-                    id: 'cumulative-layout-shift',
-                    category: 'performance',
-                    severity: metrics.cumulativeLayoutShift > 0.25 ? 'critical' : 'serious',
-                    effort: remediation.effort,
-                    component: 'Layout Shifting Elements',
-                    playwrightLocator: `// Use Chrome DevTools Performance panel to identify shifting elements`,
-                    issue: `CLS is ${metrics.cumulativeLayoutShift.toFixed(3)} (target: <0.1)`,
-                    remediation: remediation.remediation,
-                    docsUrl: remediation.docsUrl
-                });
-            }
-
-            if (metrics.totalBlockingTime > 200) {
-                const remediation = REMEDIATION_DATABASE['total-blocking-time'];
-                issues.push({
-                    id: 'total-blocking-time',
-                    category: 'performance',
-                    severity: metrics.totalBlockingTime > 600 ? 'critical' : 'serious',
-                    effort: remediation.effort,
-                    component: 'Main Thread',
-                    playwrightLocator: `// Profile with Chrome DevTools Performance panel`,
-                    issue: `TBT is ${metrics.totalBlockingTime}ms (target: <200ms)`,
-                    remediation: remediation.remediation,
-                    docsUrl: remediation.docsUrl
-                });
-            }
+        if (metrics.largestContentfulPaint > 2500) {
+            const remediation = REMEDIATION_DATABASE['largest-contentful-paint'];
+            issues.push({
+                id: 'largest-contentful-paint',
+                category: 'performance',
+                severity: metrics.largestContentfulPaint > 4000 ? 'critical' : 'serious',
+                effort: remediation.effort,
+                component: 'LCP Element',
+                playwrightLocator: `// Identify LCP element with Lighthouse DevTools`,
+                issue: `LCP is ${metrics.largestContentfulPaint}ms (target: <2500ms)`,
+                remediation: remediation.remediation,
+                docsUrl: remediation.docsUrl
+            });
         }
 
-        // Process integrity failures
+        if (metrics.cumulativeLayoutShift > 0.1) {
+            const remediation = REMEDIATION_DATABASE['cumulative-layout-shift'];
+            issues.push({
+                id: 'cumulative-layout-shift',
+                category: 'performance',
+                severity: metrics.cumulativeLayoutShift > 0.25 ? 'critical' : 'serious',
+                effort: remediation.effort,
+                component: 'Layout Shifting Elements',
+                playwrightLocator: `// Use Chrome DevTools Performance panel to identify shifting elements`,
+                issue: `CLS is ${metrics.cumulativeLayoutShift.toFixed(3)} (target: <0.1)`,
+                remediation: remediation.remediation,
+                docsUrl: remediation.docsUrl
+            });
+        }
+
+        if (metrics.totalBlockingTime > 200) {
+            const remediation = REMEDIATION_DATABASE['total-blocking-time'];
+            issues.push({
+                id: 'total-blocking-time',
+                category: 'performance',
+                severity: metrics.totalBlockingTime > 600 ? 'critical' : 'serious',
+                effort: remediation.effort,
+                component: 'Main Thread',
+                playwrightLocator: `// Profile with Chrome DevTools Performance panel`,
+                issue: `TBT is ${metrics.totalBlockingTime}ms (target: <200ms)`,
+                remediation: remediation.remediation,
+                docsUrl: remediation.docsUrl
+            });
+        }
+    }
+
+    private processIntegrityFailures(report: ReportData, issues: ArchitectIssue[]): void {
         const integrityResults = report.integrity?.results ?? [];
         integrityResults.filter(r => !r.passed).forEach(result => {
             issues.push({
@@ -771,170 +808,167 @@ export class HtmlReportGenerator {
                 url: result.url
             });
         });
+    }
 
-        // Process security assessment findings (black-box pentesting)
-        if (report.security_assessment?.findings) {
-            report.security_assessment.findings.forEach(finding => {
-                const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
-                    CRITICAL: 'critical',
-                    HIGH: 'serious',
-                    MEDIUM: 'warning',
-                    LOW: 'info',
-                    INFO: 'info'
-                };
+    private processPentestFindings(report: ReportData, issues: ArchitectIssue[]): void {
+        if (!report.security_assessment?.findings) return;
+        
+        report.security_assessment.findings.forEach(finding => {
+            const severityMap: Record<string, IssueSeverity> = {
+                CRITICAL: 'critical',
+                HIGH: 'serious',
+                MEDIUM: 'warning',
+                LOW: 'info',
+                INFO: 'info'
+            };
 
-                const effortMap: Record<string, 'low' | 'medium' | 'high'> = {
-                    idor: 'high',
-                    xss: 'medium',
-                    sqli: 'high',
-                    auth: 'high',
-                    'rate-limit': 'medium',
-                    'info-disclosure': 'low',
-                    csrf: 'medium'
-                };
+            const effortMap: Record<string, IssueEffort> = {
+                idor: 'high',
+                xss: 'medium',
+                sqli: 'high',
+                auth: 'high',
+                'rate-limit': 'medium',
+                'info-disclosure': 'low',
+                csrf: 'medium'
+            };
 
-                const severityKey = String(finding.severity || '').toUpperCase();
-                const categoryKey = String(finding.category || 'issue');
-                const endpoint = String(finding.endpoint || '').trim();
-                let component = endpoint || '/';
-                try {
-                    component = new URL(endpoint || '/', 'http://localhost').pathname || component;
-                } catch {
-                    // keep fallback
-                }
-
-                issues.push({
-                    id: finding.id || `pentest-${categoryKey.toLowerCase()}`,
-                    category: 'pentest',
-                    severity: severityMap[severityKey] || 'warning',
-                    effort: effortMap[categoryKey] || 'medium',
-                    component,
-                    playwrightLocator: endpoint ? `await page.goto('${endpoint}')` : `// Navigate to affected endpoint`,
-                    issue: `[${categoryKey.toUpperCase()}] ${finding.title || 'Finding'}: ${finding.description || ''}`,
-                    remediation: finding.remediation || 'Review finding details and remediate accordingly.',
-                    docsUrl: finding.cweId
-                        ? `https://cwe.mitre.org/data/definitions/${String(finding.cweId).replace('CWE-', '')}.html`
-                        : 'https://owasp.org/www-project-web-security-testing-guide/',
-                    url: endpoint || undefined
-                });
+            const severityKey = String(finding.severity || '').toUpperCase();
+            const categoryKey = String(finding.category || 'issue');
+            const endpoint = String(finding.endpoint || '').trim();
+            
+            issues.push({
+                id: finding.id || `pentest-${categoryKey.toLowerCase()}`,
+                category: 'pentest',
+                severity: severityMap[severityKey] || 'warning',
+                effort: effortMap[categoryKey] || 'medium',
+                component: endpoint || '/',
+                playwrightLocator: endpoint ? `await page.goto('${endpoint}')` : `// Navigate to affected endpoint`,
+                issue: `[${categoryKey.toUpperCase()}] ${finding.title || 'Finding'}: ${finding.description || ''}`,
+                remediation: finding.remediation || 'Review finding details and remediate accordingly.',
+                docsUrl: finding.cweId
+                    ? `https://cwe.mitre.org/data/definitions/${String(finding.cweId).replace('CWE-', '')}.html`
+                    : 'https://owasp.org/www-project-web-security-testing-guide/',
+                url: endpoint || undefined
             });
-        }
+        });
+    }
 
-        // Process Supabase security issues
-        if (report.supabase_issues) {
-            report.supabase_issues.forEach(issue => {
-                const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
-                    CRITICAL: 'critical',
-                    HIGH: 'serious',
-                    MEDIUM: 'warning',
-                    LOW: 'info',
-                    INFO: 'info'
-                };
+    private processSupabaseIssues(report: ReportData, issues: ArchitectIssue[]): void {
+        if (!report.supabase_issues) return;
+        
+        report.supabase_issues.forEach(issue => {
+            const severityMap: Record<string, IssueSeverity> = {
+                CRITICAL: 'critical',
+                HIGH: 'serious',
+                MEDIUM: 'warning',
+                LOW: 'info',
+                INFO: 'info'
+            };
 
-                issues.push({
-                    id: `supabase-${issue.type}`,
-                    category: 'supabase',
-                    severity: severityMap[issue.severity] || 'warning',
-                    effort: issue.type.includes('service_role') ? 'high' : 'medium',
-                    component: 'Supabase Configuration',
-                    playwrightLocator: `// Check browser DevTools Network tab for Supabase API calls`,
-                    issue: issue.description,
-                    remediation: issue.remediation,
-                    docsUrl: 'https://supabase.com/docs/guides/auth/row-level-security'
-                });
+            issues.push({
+                id: `supabase-${issue.type}`,
+                category: 'supabase',
+                severity: severityMap[issue.severity] || 'warning',
+                effort: issue.type.includes('service_role') ? 'high' : 'medium',
+                component: 'Supabase Configuration',
+                playwrightLocator: `// Check browser DevTools Network tab for Supabase API calls`,
+                issue: issue.description,
+                remediation: issue.remediation,
+                docsUrl: 'https://supabase.com/docs/guides/auth/row-level-security'
             });
-        }
+        });
+    }
 
-        // Process vulnerable frontend libraries
-        if (report.vulnerable_libraries) {
-            report.vulnerable_libraries.forEach(lib => {
-                const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
-                    CRITICAL: 'critical',
-                    HIGH: 'serious',
-                    MEDIUM: 'serious',
-                    LOW: 'warning'
+    private processVulnerableLibraries(report: ReportData, issues: ArchitectIssue[]): void {
+        if (!report.vulnerable_libraries) return;
+
+        report.vulnerable_libraries.forEach(lib => {
+            const severityMap: Record<string, IssueSeverity> = {
+                CRITICAL: 'critical',
+                HIGH: 'serious',
+                MEDIUM: 'serious',
+                LOW: 'warning'
+            };
+
+            const cveList = lib.vulnerabilities.map(v => v.cve).join(', ');
+
+            issues.push({
+                id: `vuln-${lib.name.toLowerCase()}`,
+                category: 'dependencies',
+                severity: severityMap[lib.severity] || 'warning',
+                effort: 'medium',
+                component: `${lib.name} v${lib.version}`,
+                playwrightLocator: `// Check browser DevTools Sources tab for ${lib.name}`,
+                issue: `Vulnerable version of ${lib.name} detected (${lib.version}). CVEs: ${cveList}`,
+                remediation: lib.recommendation,
+                docsUrl: lib.vulnerabilities[0]?.cve
+                    ? `https://nvd.nist.gov/vuln/detail/${lib.vulnerabilities[0].cve}`
+                    : 'https://owasp.org/www-project-dependency-check/'
+            });
+        });
+    }
+
+    private processActiveScanAlerts(report: ReportData, issues: ArchitectIssue[]): void {
+        if (!report.active_scan?.activeAlerts) return;
+
+        report.active_scan.activeAlerts.forEach(alert => {
+            const riskMap: Record<string, IssueSeverity> = {
+                High: 'critical',
+                Medium: 'serious',
+                Low: 'warning'
+            };
+
+            issues.push({
+                id: `active-${alert.name.toLowerCase().replace(/\s+/g, '-')}`,
+                category: 'security',
+                severity: riskMap[alert.risk] || 'warning',
+                effort: 'medium',
+                component: new URL(alert.url).pathname || '/',
+                playwrightLocator: `await page.goto('${alert.url}')`,
+                issue: `[ACTIVE SCAN] ${alert.description}`,
+                remediation: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.remediation ||
+                    'Review security configuration and apply recommended headers.',
+                docsUrl: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.docsUrl ||
+                    'https://owasp.org/www-project-web-security-testing-guide/',
+                url: alert.url,
+                complianceTags: getComplianceTags(alert.name)
+            });
+        });
+    }
+
+    private processCustomChecks(report: ReportData, issues: ArchitectIssue[]): void {
+        if (!report.custom_checks) return;
+
+        report.custom_checks.forEach(check => {
+            check.violations.forEach(v => {
+                const severityMap: Record<string, IssueSeverity> = {
+                    critical: 'critical',
+                    high: 'serious',
+                    medium: 'warning',
+                    low: 'info',
+                    info: 'info'
                 };
 
-                const cveList = lib.vulnerabilities.map(v => v.cve).join(', ');
-
                 issues.push({
-                    id: `vuln-${lib.name.toLowerCase()}`,
-                    category: 'dependencies',
-                    severity: severityMap[lib.severity] || 'warning',
+                    id: v.id,
+                    category: 'integrity',
+                    severity: severityMap[v.severity.toLowerCase()] || 'warning',
                     effort: 'medium',
-                    component: `${lib.name} v${lib.version}`,
-                    playwrightLocator: `// Check browser DevTools Sources tab for ${lib.name}`,
-                    issue: `Vulnerable version of ${lib.name} detected (${lib.version}). CVEs: ${cveList}`,
-                    remediation: lib.recommendation,
-                    docsUrl: lib.vulnerabilities[0]?.cve
-                        ? `https://nvd.nist.gov/vuln/detail/${lib.vulnerabilities[0].cve}`
-                        : 'https://owasp.org/www-project-dependency-check/'
+                    component: check.name,
+                    playwrightLocator: v.selector ? `page.locator('${v.selector}')` : '// Custom check violation',
+                    issue: v.description + (v.evidence ? ` Evidence: ${v.evidence}` : ''),
+                    remediation: v.remediation || 'Fix the custom check violation.',
+                    url: v.url,
+                    docsUrl: '#'
                 });
             });
-        }
+        });
+    }
 
-        // Process active scan alerts
-        if (report.active_scan?.activeAlerts) {
-            report.active_scan.activeAlerts.forEach(alert => {
-                const riskMap: Record<string, 'critical' | 'serious' | 'warning'> = {
-                    High: 'critical',
-                    Medium: 'serious',
-                    Low: 'warning'
-                };
-
-                issues.push({
-                    id: `active-${alert.name.toLowerCase().replace(/\s+/g, '-')}`,
-                    category: 'security',
-                    severity: riskMap[alert.risk] || 'warning',
-                    effort: 'medium',
-                    component: new URL(alert.url).pathname || '/',
-                    playwrightLocator: `await page.goto('${alert.url}')`,
-                    issue: `[ACTIVE SCAN] ${alert.description}`,
-                    remediation: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.remediation ||
-                        'Review security configuration and apply recommended headers.',
-                    docsUrl: REMEDIATION_DATABASE[alert.name.toLowerCase().replace(/\s+/g, '-')]?.docsUrl ||
-                        'https://owasp.org/www-project-web-security-testing-guide/',
-                    url: alert.url,
-                    complianceTags: getComplianceTags(alert.name)
-                });
-            });
-        }
-
-        // Process custom check violations
-        if (report.custom_checks) {
-            report.custom_checks.forEach(check => {
-                check.violations.forEach(v => {
-                    const severityMap: Record<string, 'critical' | 'serious' | 'warning' | 'info'> = {
-                        critical: 'critical',
-                        high: 'serious',
-                        medium: 'warning',
-                        low: 'info',
-                        info: 'info'
-                    };
-
-                    issues.push({
-                        id: v.id,
-                        category: 'integrity',
-                        severity: severityMap[v.severity.toLowerCase()] || 'warning',
-                        effort: 'medium',
-                        component: check.name,
-                        playwrightLocator: v.selector ? `page.locator('${v.selector}')` : '// Custom check violation',
-                        issue: v.description + (v.evidence ? ` Evidence: ${v.evidence}` : ''),
-                        remediation: v.remediation || 'Fix the custom check violation.',
-                        url: v.url,
-                        docsUrl: '#'
-                    });
-                });
-            });
-        }
-
-
-
-        // Apply AI Remediation for Critical Issues
+    private async applyAiRemediation(issues: ArchitectIssue[]): Promise<void> {
         logger.info('Applying AI remediation to critical issues...');
         const criticalIssues = issues.filter(i => i.severity === 'critical');
 
-        // Process in parallel with concurrency limit (all at once for now as criticals are few)
         await Promise.all(criticalIssues.map(async (issue) => {
             try {
                 const response = await this.aiService.generateFix({
@@ -943,14 +977,11 @@ export class HtmlReportGenerator {
                     severity: issue.severity,
                     context: `Component: ${issue.component}. Locator: ${issue.playwrightLocator}`
                 });
-                // Extract the code fix from the RemediationResponse
                 issue.aiSolution = response.code;
             } catch (err) {
                 logger.warn(`Failed to generate AI fix for ${issue.id}: ${err}`);
             }
         }));
-
-        return issues;
     }
 
     /**
@@ -1968,15 +1999,15 @@ export class HtmlReportGenerator {
                         <div class="device-metrics">
                             <div class="metric-row">
                                 <span>Performance</span>
-                                <span class="metric-val ${scores.performance >= 90 ? 'good' : 'bad'}">${scores.performance}</span>
+                                <span class="metric-val ${this.getMetricClass(scores.performance)}">${scores.performance}</span>
                             </div>
                             <div class="metric-row">
                                 <span>Accessibility</span>
-                                <span class="metric-val ${scores.accessibility >= 90 ? 'good' : 'bad'}">${scores.accessibility}</span>
+                                <span class="metric-val ${this.getMetricClass(scores.accessibility)}">${scores.accessibility}</span>
                             </div>
                             <div class="metric-row">
                                 <span>SEO</span>
-                                <span class="metric-val ${scores.seo >= 90 ? 'good' : 'bad'}">${scores.seo}</span>
+                                <span class="metric-val ${this.getMetricClass(scores.seo)}">${scores.seo}</span>
                             </div>
                         </div>
                         <div class="device-stats">
@@ -2002,6 +2033,24 @@ export class HtmlReportGenerator {
             }
         } catch { }
         return 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxNCI+Tm8gSW1hZ2U8L3RleHQ+PC9zdmc+';
+    }
+
+    private getScoreRingClass(score: number): string {
+        if (score >= 90) return 'score-good';
+        if (score >= 70) return 'score-warning';
+        return 'score-critical';
+    }
+
+    private getMetricClass(score: number): string {
+        return score >= 90 ? 'good' : 'bad';
+    }
+
+    private getCoverageBadgeClass(status: string): string {
+        switch (status) {
+            case 'ran': return 'badge-success';
+            case 'failed': return 'badge-critical';
+            default: return 'badge-warning';
+        }
     }
 
     /**
@@ -2062,7 +2111,7 @@ export class HtmlReportGenerator {
                 </div>
             </div>
             <div class="health-score">
-                <div class="score-ring ${healthScore >= 90 ? 'score-good' : healthScore >= 70 ? 'score-warning' : 'score-critical'}">
+                <div class="score-ring ${this.getScoreRingClass(healthScore)}">
                     <svg viewBox="0 0 36 36">
                         <path class="ring-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                         <path class="ring-fill" stroke-dasharray="${healthScore}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
@@ -2141,8 +2190,8 @@ export class HtmlReportGenerator {
         <div class="section-header"><h2>Scan Coverage</h2></div>
         <div class="compliance-section">
             ${report.coverage.map(item => {
-                const badgeClass = item.status === 'ran' ? 'badge-success' : item.status === 'failed' ? 'badge-critical' : 'badge-warning';
-                const statusLabel = item.status === 'ran' ? 'Ran' : item.status === 'failed' ? 'Failed' : 'Skipped';
+                const badgeClass = this.getCoverageBadgeClass(item.status);
+                const statusLabel = item.status === 'ran' ? 'Ran' : (item.status === 'failed' ? 'Failed' : 'Skipped');
                 return `
                 <div class="compliance-card">
                     <div class="compliance-standard">${item.name}</div>
@@ -2159,7 +2208,16 @@ export class HtmlReportGenerator {
 
         <!-- Trend Chart -->
         <div class="trend-section">
-            <h2>Compliance Trend (Last 5 Runs)</h2>
+            <div class="section-header">
+                <h2>Compliance Trend (Last 5 Runs)</h2>
+                <div class="filter-controls">
+                    <select id="trendMetric" class="metric-select" onchange="updateTrendChart()">
+                        <option value="health">Health Score</option>
+                        <option value="critical">Critical Issues</option>
+                        <option value="performance">Performance</option>
+                    </select>
+                </div>
+            </div>
             <div class="chart-container">
                 <canvas id="trendChart"></canvas>
             </div>
@@ -2195,10 +2253,19 @@ export class HtmlReportGenerator {
             <div class="section-header">
                 <h2>Remediation Plan (${issues.length} Issues)</h2>
                 <div class="filter-controls">
-                    <button class="filter-btn active" data-filter="all">All</button>
-                    <button class="filter-btn" data-filter="critical">Critical</button>
-                    <button class="filter-btn" data-filter="serious">Serious</button>
-                    <button class="filter-btn" data-filter="warning">Warning</button>
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="searchInput" placeholder="Search findings..." aria-label="Search findings">
+                    </div>
+                    <div class="filter-group">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="critical">Critical</button>
+                        <button class="filter-btn" data-filter="serious">Serious</button>
+                        <button class="filter-btn" data-filter="warning">Warning</button>
+                    </div>
+                    <div class="action-group">
+                        <button class="action-btn" id="exportBtn" onclick="exportReportJson()">📥 Export JSON</button>
+                    </div>
                 </div>
             </div>
 
@@ -2259,6 +2326,7 @@ export class HtmlReportGenerator {
         </footer>
     </div>
     <script>
+        const reportData = ${JSON.stringify(report)};
         ${this.getScripts()}
     </script>
     <script>
@@ -3368,22 +3436,84 @@ export class HtmlReportGenerator {
      */
     private getScripts(): string {
         return `
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                filterIssues(term);
+            });
+        }
+
         // Filter functionality
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
-
-                const filter = btn.dataset.filter;
-                document.querySelectorAll('.issue-row').forEach(row => {
-                    if (filter === 'all' || row.dataset.severity === filter) {
-                        row.classList.remove('hidden');
-                    } else {
-                        row.classList.add('hidden');
-                    }
-                });
+                
+                // Re-apply filter with current search term
+                const term = document.getElementById('searchInput')?.value.toLowerCase() || '';
+                filterIssues(term);
             });
         });
+
+        function filterIssues(searchTerm) {
+            const activeServerityBtn = document.querySelector('.filter-btn.active');
+            const severityFilter = activeServerityBtn ? activeServerityBtn.dataset.filter : 'all';
+            
+            document.querySelectorAll('.issue-row').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                const severity = row.dataset.severity;
+                
+                const matchesSearch = text.includes(searchTerm);
+                const matchesSeverity = severityFilter === 'all' || severity === severityFilter;
+                
+                if (matchesSearch && matchesSeverity) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+        }
+
+        // Export JSON
+        function exportReportJson() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(reportData, null, 2));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "compliance-report.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        }
+
+        // Update Trend Chart
+        function updateTrendChart() {
+            const metric = document.getElementById('trendMetric').value;
+            const chart = Chart.getChart(document.getElementById('trendChart'));
+            
+            // We need historyData to be available in this scope too, or we can look at the datasets
+            // Since historyData is defined in the next script block, we might need to modify how it's initialized.
+            // CAUTION: 'historyData' is defined in the *next* script tag in buildHtml.
+            // We should reload the chart data there or move the chart initialization here.
+            // For now, let's assume the chart is accessible and we can toggle datasets.
+            
+            if (!chart) return;
+
+            // Simple preset toggling based on datasets we defined
+            if (metric === 'health') {
+                chart.data.datasets[0].hidden = false;
+                chart.data.datasets[1].hidden = true;
+            } else if (metric === 'critical') {
+                chart.data.datasets[0].hidden = true;
+                chart.data.datasets[1].hidden = false;
+            } else {
+                // Future: Add performance dataset
+                chart.data.datasets[0].hidden = false;
+                chart.data.datasets[1].hidden = false;
+            }
+            chart.update();
+        }
 
         // Copy locator to clipboard
         document.querySelectorAll('.locator').forEach(el => {

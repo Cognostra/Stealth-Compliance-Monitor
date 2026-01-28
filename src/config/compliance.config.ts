@@ -1,4 +1,5 @@
 import { getConfig, EnvConfig } from './env.js';
+import { PerformanceBudget } from '../types/index.js';
 
 /**
  * Runtime configuration schema
@@ -70,6 +71,9 @@ export type ComplianceConfig = EnvConfig & RuntimeProfile & {
     // Redaction
     redactionEnabled?: boolean;
     runTag?: string;
+
+    // Performance Budget
+    performanceBudget?: PerformanceBudget;
 };
 
 export interface WebhookConfig {

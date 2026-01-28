@@ -22,6 +22,7 @@ import { SupabaseSecurityIssue } from './SupabaseSecurityScanner.js';
 import { VulnerableLibrary } from './FrontendVulnerabilityScanner.js';
 import { NetworkIncident } from './NetworkSpy.js';
 import { LeakedSecret } from './SecretScanner.js';
+import { VisualRegressionService, VisualDiffResult } from '../v3/services/VisualRegressionService.js';
 
 interface DeviceScanResult {
     device: string;
@@ -35,6 +36,7 @@ interface DeviceScanResult {
     networkIncidents: NetworkIncident[];
     leakedSecrets: LeakedSecret[];
     screenshotPath?: string;
+    visualResult?: VisualDiffResult;
 }
 
 export class ComplianceRunner {
@@ -497,35 +499,69 @@ export class ComplianceRunner {
             if (runConfig.activeSecurity) {
                 auditResult = await auditService.runFullAudit(targetUrl, device);
             } else {
-                const lighthouseResult = await auditService.runLighthouseAudit(targetUrl, device);
+                // Pass baseline and budget options via AuditService (need to update AuditService first)
+                // For now, assume AuditService definition will be updated to match
+                const lighthouseResult = await auditService.runLighthouseAudit(targetUrl, device, {
+                    useBaseline: true,
+                    budget: runConfig.performanceBudget
+                });
+                
+                
+                // Construct AuditResult from LighthouseResult
                 auditResult = {
-                    lighthouse: lighthouseResult,
+                    lighthouse: lighthouseResult, 
                     security_alerts: [],
+                    ignored_alerts: [],
                     summary: {
-                        performanceScore: lighthouseResult?.scores.performance ?? 0,
-                        accessibilityScore: lighthouseResult?.scores.accessibility ?? 0,
-                        seoScore: lighthouseResult?.scores.seo ?? 0,
+                        performanceScore: lighthouseResult?.scores.performance || 0,
+                        accessibilityScore: lighthouseResult?.scores.accessibility || 0,
+                        seoScore: lighthouseResult?.scores.seo || 0,
                         highRiskAlerts: 0,
                         mediumRiskAlerts: 0,
-                        passedAudit: true
+                        passedAudit: (lighthouseResult?.scores.performance || 0) >= 50 // simplistic check
                     },
                     timestamp: new Date().toISOString(),
-                    targetUrl: targetUrl,
-                    ignored_alerts: []
+                    targetUrl: targetUrl
                 };
             }
+
             await persistenceService.log('security_finding', auditResult.security_alerts);
 
             // Step 4: Crawl
             progress?.advance('Crawling site', device);
             const crawlResult = await crawlerService.crawl();
 
-            // Take a screenshot of main page for report
+            // Take a screenshot of main page for report & Visual Regression
             const page = browserService.getPage();
+            let visualResult: VisualDiffResult | undefined;
+            
             if (page) {
                 try {
+                    // Standard screenshot
                     const sc = await browserService.screenshot(`report-${device}`);
                     screenshotPath = sc.path;
+                    
+                    // Visual Regression
+                    try {
+                        const buffer = await page.screenshot({ fullPage: true }); // Use full page for visual diff
+                        const visualService = new VisualRegressionService(
+                            logger, 
+                            '.visual-baselines',
+                             this.config.visualDiffThreshold || 0.1
+                        );
+                        // Sanitize filename
+                        const safeDomain = new URL(targetUrl).hostname.replace(/[^a-z0-9]/gi, '_');
+                        visualResult = await visualService.compare(`${safeDomain}-${device}`, buffer);
+                        
+                        // Fail audit if visual regression failed (configurable policy?)
+                        // For now we just log it and include in report.
+                        if (!visualResult.passed) {
+                            logger.warn(`📸 Visual Regression Failed for ${device}: ${visualResult.diffPercentage.toFixed(2)}% difference`);
+                        }
+                    } catch (vrError) {
+                         logger.warn(`Visual regression check failed: ${vrError}`);
+                    }
+
                 } catch { }
             }
 
@@ -597,7 +633,8 @@ export class ComplianceRunner {
                 securityResult,
                 networkIncidents: browserService.getNetworkIncidents(),
                 leakedSecrets: browserService.getLeakedSecrets(),
-                screenshotPath
+                screenshotPath,
+                visualResult
             };
 
         } finally {

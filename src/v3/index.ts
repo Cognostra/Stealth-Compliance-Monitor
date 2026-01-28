@@ -25,6 +25,8 @@ export interface V3FeatureFlags {
     compliance: boolean;
     /** Frameworks to include */
     complianceFrameworks: string[];
+    /** Enable Executive Summary PDF generation */
+    executiveReport: boolean;
 }
 
 /**
@@ -35,6 +37,7 @@ export const defaultFeatureFlags: V3FeatureFlags = {
     policy: false,
     compliance: false,
     complianceFrameworks: [],
+    executiveReport: false,
 };
 
 /**
@@ -62,6 +65,11 @@ export function parseV3Flags(args: string[]): V3FeatureFlags {
         if (arg.startsWith('--compliance=')) {
             flags.compliance = true;
             flags.complianceFrameworks = arg.slice(13).split(',').map((f) => f.trim().toLowerCase());
+        }
+
+        // --executive-report
+        if (arg === '--executive-report' || arg === '--exec-report') {
+            flags.executiveReport = true;
         }
     }
 

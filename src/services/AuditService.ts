@@ -16,6 +16,13 @@ import { getConfig, EnvConfig } from '../config/env.js';
 import { logger } from '../utils/logger.js';
 import { persistenceService } from './PersistenceService.js';
 import { baselineService } from './BaselineService.js';
+import { PerformanceBaseline, LighthouseScores as V3LighthouseScores } from '../v3/services/PerformanceBaseline.js';
+import { PerformanceBudget } from '../types/index.js';
+
+export interface AuditOptions {
+    useBaseline?: boolean;
+    budget?: PerformanceBudget;
+}
 
 /**
  * Lighthouse audit scores
@@ -204,7 +211,10 @@ export class AuditService {
     /**
      * Run Lighthouse audit with Desktop configuration
      */
-    async runLighthouseAudit(url: string, deviceName: string = 'desktop'): Promise<LighthouseResult | null> {
+    /**
+     * Run Lighthouse audit with Desktop configuration
+     */
+    async runLighthouseAudit(url: string, deviceName: string = 'desktop', options?: AuditOptions): Promise<LighthouseResult | null> {
         logger.info(`Running Lighthouse audit (${deviceName} mode)...`);
 
         try {
@@ -287,6 +297,43 @@ export class AuditService {
             const audits = this.countAudits(lhr.audits);
 
             logger.info('Lighthouse audit completed', scores);
+
+            // Check Budget
+            if (options?.budget) {
+                const violationParams = [];
+                if (scores.performance < options.budget.minScore) {
+                    violationParams.push(`Score ${scores.performance} < ${options.budget.minScore}`);
+                }
+                if (options.budget.maxLCP && metrics.largestContentfulPaint > options.budget.maxLCP) {
+                    violationParams.push(`LCP ${metrics.largestContentfulPaint} > ${options.budget.maxLCP}`);
+                }
+                
+                if (violationParams.length > 0) {
+                    logger.warn('Performance Budget Exceeded', { violations: violationParams });
+                }
+            }
+
+            // Check Baseline
+            if (options?.useBaseline) {
+                try {
+                    const perfBaseline = new PerformanceBaseline();
+                    if (perfBaseline.load()) {
+                         const currentScores: V3LighthouseScores = {
+                            performance: scores.performance,
+                            accessibility: scores.accessibility,
+                            bestPractices: scores.bestPractices,
+                            seo: scores.seo,
+                            pwa: 0 // Not captured currently
+                        };
+                        const comparison = perfBaseline.compare(url, currentScores);
+                        if (comparison.overallStatus === 'regressed') {
+                            logger.warn(`Performance Regression Detected for ${url}`);
+                        }
+                    }
+                } catch (e) {
+                    logger.warn(`Baseline check failed: ${e}`);
+                }
+            }
 
             return {
                 scores,

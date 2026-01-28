@@ -1,6 +1,7 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { logger } from '../utils/logger.js';
+import { TrendHistory } from '../v3/services/TrendService.js';
 
 export interface FleetSiteResult {
     url: string;
@@ -47,7 +48,7 @@ export interface FleetSummary {
 }
 
 export class FleetReportGenerator {
-    private reportsDir: string;
+    private readonly reportsDir: string;
 
     constructor(reportsDir: string = './reports') {
         this.reportsDir = reportsDir;
@@ -56,11 +57,11 @@ export class FleetReportGenerator {
     /**
      * Generate fleet dashboard from scan results
      */
-    async generate(results: FleetSiteResult[]): Promise<string> {
+    async generate(results: FleetSiteResult[], history?: TrendHistory): Promise<string> {
         logger.info(`Generating Fleet Dashboard for ${results.length} sites...`);
 
         const summary = this.calculateSummary(results);
-        const html = this.buildHtml(results, summary);
+        const html = this.buildHtml(results, summary, history);
         const outputPath = path.join(this.reportsDir, 'fleet-dashboard.html');
 
         // Ensure directory exists
@@ -133,8 +134,31 @@ export class FleetReportGenerator {
     /**
      * Build HTML dashboard
      */
-    private buildHtml(results: FleetSiteResult[], summary: FleetSummary): string {
+    private buildHtml(results: FleetSiteResult[], summary: FleetSummary, history?: TrendHistory): string {
         const generatedAt = new Date().toLocaleString();
+        
+        // Prepare chart data if history exists
+        let chartDataScript = '';
+        if (history) {
+            // Aggregate fleet average over time?
+            // This is tricky if runs are disjoint.
+            // Simplified: Pick one target (e.g. first one) or just show individual charts?
+            // Let's show a chart for the top 5 sites or just the first site as example?
+            // Or aggregate daily average? 
+            
+            // For now, let's just serialize the history to JS and let client side render comparison?
+            // Better: Render a chart for "Average Fleet Score" if we tracked it. 
+            // `TrendService` stores per-target.
+            // We can calculate avg per runId? But runIds differ.
+            // Let's just graph the current results (Bar chart of scores)?
+            
+            // Actually, PRD said "Show score history sparklines".
+            // So we need history per site.
+            
+            chartDataScript = `
+                const fleetHistory = ${JSON.stringify(history)};
+            `;
+        }
 
         const trendHtml = summary.trends ? `
             <div class="card">
@@ -147,6 +171,44 @@ export class FleetReportGenerator {
             </div>
         ` : '';
 
+        const chartScript = `
+            <script>
+                ${chartDataScript}
+                const historyData = typeof fleetHistory !== 'undefined' ? fleetHistory : {};
+                
+                document.addEventListener('DOMContentLoaded', () => {
+                    document.querySelectorAll('.sparkline-canvas').forEach(canvas => {
+                        const ctx = canvas.getContext('2d');
+                        const url = canvas.dataset.url;
+                        const records = historyData[url] || [];
+                        if (records.length < 2) return;
+                        
+                        new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: records.map(r => r.timestamp),
+                                datasets: [{
+                                    data: records.map(r => r.overallScore),
+                                    borderColor: '#58a6ff',
+                                    borderWidth: 2,
+                                    pointRadius: 0,
+                                    fill: false,
+                                    tension: 0.1
+                                }]
+                            },
+                            options: {
+                                responsive: false,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                                scales: { x: { display: false }, y: { display: false, min: 0, max: 100 } },
+                                animation: false
+                            }
+                        });
+                    });
+                });
+            </script>
+        `;
+
         return `
 <!DOCTYPE html>
 <html lang="en">
@@ -154,6 +216,7 @@ export class FleetReportGenerator {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Enterprise Fleet Compliance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --bg-primary: #0d1117;
@@ -352,7 +415,7 @@ export class FleetReportGenerator {
 
         <section class="summary-cards">
             <div class="card">
-                <div class="card-value ${summary.averageScore >= 90 ? 'score-good' : summary.averageScore >= 70 ? 'score-warning' : 'score-critical'}">${summary.averageScore}</div>
+                <div class="card-value ${summary.averageScore >= 90 ? 'score-good' : (summary.averageScore >= 70 ? 'score-warning' : 'score-critical')}">${summary.averageScore}</div>
                 <div class="card-label">Average Fleet Score</div>
             </div>
             <div class="card">
@@ -414,42 +477,7 @@ export class FleetReportGenerator {
                     </tr>
                 </thead>
                 <tbody>
-                    ${results.map(site => `
-                    <tr>
-                        <td>
-                            <div style="font-weight:600; color:var(--text-primary);">${site.domain}</div>
-                            <div style="font-size:0.75rem; color:var(--text-secondary);">${site.url}</div>
-                        </td>
-                        <td class="score-cell ${site.healthScore >= 90 ? 'score-good' : site.healthScore >= 70 ? 'score-warning' : 'score-critical'}">
-                            ${site.healthScore}
-                        </td>
-                        <td>
-                            <div class="score-breakdown">
-                                ${site.scores?.performance !== undefined ? `<span>P:${site.scores.performance}</span>` : ''}
-                                ${site.scores?.accessibility !== undefined ? `<span>A:${site.scores.accessibility}</span>` : ''}
-                                ${site.scores?.security !== undefined ? `<span>S:${site.scores.security}</span>` : ''}
-                            </div>
-                        </td>
-                        <td>
-                            <span class="status-badge status-${site.status}">${site.status}</span>
-                        </td>
-                        <td>
-                            <span style="${site.criticalIssues > 0 ? 'color:var(--accent-red); font-weight:700;' : ''}">${site.criticalIssues}C</span>
-                            ${site.highIssues ? `<span style="color:var(--accent-yellow);"> / ${site.highIssues}H</span>` : ''}
-                        </td>
-                        <td>
-                            ${site.comparison ? `
-                            <span class="trend-indicator">
-                                ${site.comparison.trend === 'improving' ? '📈' : site.comparison.trend === 'declining' ? '📉' : '➡️'}
-                                ${site.comparison.previousScore ? `(was ${site.comparison.previousScore})` : ''}
-                            </span>
-                            ` : '<span style="color:var(--text-secondary);">—</span>'}
-                        </td>
-                        <td>
-                            <a href="${site.reportPath}" class="report-link">View Report →</a>
-                        </td>
-                    </tr>
-                    `).join('')}
+                    ${results.map(site => this.renderSiteRow(site)).join('')}
                 </tbody>
             </table>
         </section>
@@ -481,6 +509,7 @@ export class FleetReportGenerator {
             a.click();
         }
     </script>
+    ${chartScript}
 </body>
 </html>
         `;
@@ -521,5 +550,44 @@ export class FleetReportGenerator {
         }
 
         return lines.join('\n');
+    }
+
+    private renderSiteRow(site: FleetSiteResult): string {
+        return `
+                    <tr>
+                        <td>
+                            <div style="font-weight:600; color:var(--text-primary);">${site.domain}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary);">${site.url}</div>
+                        </td>
+                        <td class="score-cell ${site.healthScore >= 90 ? 'score-good' : (site.healthScore >= 70 ? 'score-warning' : 'score-critical')}">
+                            ${site.healthScore}
+                        </td>
+                        <td>
+                            <div class="score-breakdown">
+                                ${site.scores?.performance !== undefined ? `<span>P:${site.scores.performance}</span>` : ''}
+                                ${site.scores?.accessibility !== undefined ? `<span>A:${site.scores.accessibility}</span>` : ''}
+                                ${site.scores?.security !== undefined ? `<span>S:${site.scores.security}</span>` : ''}
+                            </div>
+                        </td>
+                        <td>
+                            <span class="status-badge status-${site.status}">${site.status}</span>
+                        </td>
+                        <td>
+                            <span style="${site.criticalIssues > 0 ? 'color:var(--accent-red); font-weight:700;' : ''}">${site.criticalIssues}C</span>
+                            ${site.highIssues ? `<span style="color:var(--accent-yellow);"> / ${site.highIssues}H</span>` : ''}
+                        </td>
+                        <td>
+                            ${site.comparison ? `
+                            <span class="trend-indicator">
+                                ${site.comparison.trend === 'improving' ? '📈' : (site.comparison.trend === 'declining' ? '📉' : '➡️')}
+                                ${site.comparison.previousScore ? `(was ${site.comparison.previousScore})` : ''}
+                            </span>
+                            ` : '<span style="color:var(--text-secondary);">—</span>'}
+                        </td>
+                        <td>
+                            <a href="${site.reportPath}" class="report-link">View Report →</a>
+                        </td>
+                    </tr>
+        `;
     }
 }

@@ -60,6 +60,13 @@ export interface SecurityMetrics {
     passiveOnly: boolean;
 }
 
+export interface PerformanceBudget {
+    minScore: number;
+    maxLCP?: number; // milliseconds
+    maxCLS?: number;
+    maxTBT?: number; // milliseconds
+}
+
 export interface SecurityHeader {
     name: string;
     present: boolean;

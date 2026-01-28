@@ -5,7 +5,8 @@
 
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
-import { PerformanceMetrics, AccessibilityMetrics, Logger } from '../types/index.js';
+import { PerformanceMetrics, AccessibilityMetrics, Logger, PerformanceBudget } from '../types/index.js';
+import { PerformanceBaseline, LighthouseScores } from '../v3/services/PerformanceBaseline.js';
 
 export class LighthouseService {
     private readonly logger: Logger;
@@ -18,9 +19,14 @@ export class LighthouseService {
     /**
      * Run Lighthouse audit on URL
      */
-    async runAudit(url: string): Promise<{
+    async runAudit(url: string, options?: {
+        useBaseline?: boolean;
+        budget?: PerformanceBudget;
+    }): Promise<{
         performance: PerformanceMetrics;
         accessibility: AccessibilityMetrics;
+        baselineComparison?: unknown;
+        budgetExceeded?: boolean;
     }> {
         this.logger.info(`Running Lighthouse audit on: ${url}`);
 
@@ -55,10 +61,67 @@ export class LighthouseService {
                 accessibilityScore: accessibility.score,
             });
 
-            return { performance, accessibility };
+            // Check budgets
+            let budgetExceeded = false;
+            if (options?.budget) {
+                budgetExceeded = this.checkBudget(performance, options.budget);
+            }
+
+            // Check baseline
+            let baselineComparison;
+            if (options?.useBaseline) {
+                try {
+                    const baselineService = new PerformanceBaseline();
+                    if (baselineService.load()) {
+                        const currentScores: LighthouseScores = {
+                            performance: performance.score || 0,
+                            accessibility: accessibility.score || 0,
+                            bestPractices: (lhr.categories?.['best-practices']?.score || 0) * 100,
+                            seo: (lhr.categories?.seo?.score || 0) * 100,
+                            pwa: (lhr.categories?.pwa?.score || 0) * 100,
+                        };
+                        
+                        baselineComparison = baselineService.compare(url, currentScores);
+                        
+                        if (baselineComparison.overallStatus === 'regressed') {
+                            this.logger.warn(`⚠️ Performance regression detected for ${url}`);
+                        }
+                    }
+                } catch (err) {
+                    this.logger.warn(`Failed to process baseline: ${err}`);
+                }
+            }
+
+            return { performance, accessibility, baselineComparison, budgetExceeded };
         } finally {
             await this.close();
         }
+    }
+
+    /**
+     * Check metrics against budget
+     */
+    private checkBudget(metrics: PerformanceMetrics, budget: PerformanceBudget): boolean {
+        const violations: string[] = [];
+        
+        if (metrics.score < budget.minScore) {
+            violations.push(`Score ${metrics.score} < ${budget.minScore}`);
+        }
+        if (budget.maxLCP && metrics.largestContentfulPaint > budget.maxLCP) {
+            violations.push(`LCP ${metrics.largestContentfulPaint}ms > ${budget.maxLCP}ms`);
+        }
+        if (budget.maxCLS && metrics.cumulativeLayoutShift > budget.maxCLS) {
+            violations.push(`CLS ${metrics.cumulativeLayoutShift} > ${budget.maxCLS}`);
+        }
+        if (budget.maxTBT && metrics.totalBlockingTime > budget.maxTBT) {
+            violations.push(`TBT ${metrics.totalBlockingTime}ms > ${budget.maxTBT}ms`);
+        }
+
+        if (violations.length > 0) {
+            this.logger.warn('Performance budget exceeded:', { violations });
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -160,6 +223,9 @@ type LighthouseRunResult = {
     categories?: {
         performance?: { score?: number | null };
         accessibility?: { score?: number | null };
+        'best-practices'?: { score?: number | null };
+        seo?: { score?: number | null };
+        pwa?: { score?: number | null };
     };
     audits?: Record<string, LighthouseAuditResult>;
 };

@@ -10,3 +10,5 @@ export {
     type PolicyProfile,
     type GeneratePolicyOptions,
 } from './GeneratePolicyCommand.js';
+
+export { runInitWizard } from './InitCommand.js';

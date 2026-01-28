@@ -14,10 +14,10 @@
  * - Browser cleanup in finally block (no zombie processes)
  * - Read-only operations only
  */
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import pLimit from 'p-limit'; // Concurrency control
 import { logger, logSection, logSuccess, logFailure } from './utils/logger.js';
-import { createConfig } from './config/compliance.config.js';
+import { createConfig, ComplianceConfig } from './config/compliance.config.js';
 import { ComplianceRunner } from './services/ComplianceRunner.js';
 import { FleetReportGenerator, FleetSiteResult } from './services/FleetReportGenerator.js';
 import { WebhookService } from './services/WebhookService.js';
@@ -25,7 +25,10 @@ import { initDeterministic } from './utils/random.js';
 import { ProgressReporter } from './utils/progress.js';
 
 // v3 imports
-import { parseV3Flags, V3_VERSION, V3IntegrationService, parseGeneratePolicyArgs, generatePolicy } from './v3/index.js';
+import { parseV3Flags, V3_VERSION, V3IntegrationService, parseGeneratePolicyArgs, generatePolicy, V3FeatureFlags } from './v3/index.js';
+import { CronScheduler } from './v3/scheduler/CronScheduler.js';
+import { TrendService } from './v3/services/TrendService.js';
+import { parseCliOptions, loadTargets, CliOptions } from './config/cli.js';
 
 /**
  * Display help message
@@ -58,12 +61,17 @@ Options:
   --policy=<path>    Load policy-as-code rules from YAML file
                      Policies can fail/warn builds based on findings
 
+  --executive-report Generate a PDF Executive Summary
+                     Output: reports/executive-summary-<timestamp>.pdf
+
   --compliance=<fw>  Include compliance framework mapping in report
                      Frameworks: soc2, gdpr, hipaa (comma-separated)
 
   --generate-policy=<profile>  Generate a policy template file
                      Profiles: strict, standard, minimal
                      Output: .compliance-policy.yml
+
+  --init             Run interactive initialization wizard
 
   --help, -h         Show this help message
 
@@ -99,12 +107,20 @@ Environment Variables:
  * Main execution function
  */
 async function main(): Promise<void> {
+
     // Parse command line arguments
     const args = process.argv.slice(2);
 
     // Check for --help flag
     if (args.includes('--help') || args.includes('-h')) {
         displayHelp();
+        process.exit(0);
+    }
+
+    // Check for --init wizard
+    if (args.includes('--init')) {
+        const { runInitWizard } = await import('./v3/commands/index.js');
+        await runInitWizard();
         process.exit(0);
     }
 
@@ -121,28 +137,28 @@ async function main(): Promise<void> {
         }
     }
 
-    const profileArg = args.find(arg => arg.startsWith('--profile='));
-    const activeFlag = args.includes('--active');
-    let profileName = profileArg ? profileArg.split('=')[1] : 'standard';
-
-    // Parse debug flags
-    const headedFlag = args.includes('--headed');
-    const debugFlag = args.includes('--debug');
-    const slowMoArg = args.find(arg => arg.startsWith('--slow-mo='));
-    const slowMoValue = slowMoArg ? parseInt(slowMoArg.split('=')[1], 10) : 0;
+    // Parse options
+    const cliOptions = parseCliOptions(args);
 
     // Parse v3 feature flags
     const v3Flags = parseV3Flags(args);
     const v3Service = new V3IntegrationService();
 
-    // If --active flag is set, force deep-active profile
-    if (activeFlag && !profileArg) {
-        profileName = 'deep-active';
-        logger.warn('⚠️  --active flag detected, using deep-active profile');
+    // Load merged configuration
+    let config: ComplianceConfig;
+    try {
+        config = createConfig(cliOptions.profileName);
+    } catch (error) {
+        console.error('Failed to load configuration:', error);
+        process.exit(1);
     }
 
-    // Load merged configuration
-    const config = createConfig(profileName);
+    // Override target if provided as positional argument
+    if (cliOptions.positionalTarget) {
+        config.targetUrl = cliOptions.positionalTarget;
+        config.LIVE_URL = cliOptions.positionalTarget;
+        logger.info(`Target override from CLI: ${cliOptions.positionalTarget}`);
+    }
 
     // Deterministic mode for stable CI runs
     if (config.deterministicMode) {
@@ -150,107 +166,145 @@ async function main(): Promise<void> {
         logger.info(`Deterministic mode enabled (seed=${config.deterministicSeed})`);
     }
 
-    // Override activeScanning if --active flag is present
-    if (activeFlag) {
+    // Active scan override
+    if (cliOptions.activeFlag) {
         (config as { activeScanning: boolean }).activeScanning = true;
     }
 
-    // Guardrails for active scanning
+    // Guardrails
+    applySecurityGuardrails(config);
+
+    // Apply debug mode overrides from CLI flags
+    applyDebugOverrides(config, cliOptions);
+
+    logger.info(`Loaded Profile: ${config.name}`);
+    logger.info(`Active Scanning: ${config.activeScanning ? 'ENABLED ⚠️' : 'Disabled'}`);
+
+    // Determine Targets
+    const targets = loadTargets(config.targetUrl);
+
+    logger.info(`Fleet Mode: ${targets.length > 1 ? 'Enabled' : 'Disabled'}`);
+    logger.info(`Targets: ${targets.length} sites to scan`);
+
+
+    // Check for Cron Schedule
+    if (config.CRON_SCHEDULE) {
+        const scheduler = new CronScheduler(logger);
+        scheduler.start(config.CRON_SCHEDULE, async () => {
+             const exitCode = await executeAudit(config, targets, v3Flags, v3Service, cliOptions.profileName, Number.parseInt(process.env.FLEET_CONCURRENCY || '5', 10));
+             logger.info(`Scheduled scan finished with exit code: ${exitCode}`);
+        });
+        
+        // Keep process alive
+        logger.info('Daemon mode enabled. Waiting for scheduled runs...');
+        // Should not exit main()
+    } else {
+        // Run once
+        const CONCURRENCY = Number.parseInt(process.env.FLEET_CONCURRENCY || '5', 10);
+        const exitCode = await executeAudit(config, targets, v3Flags, v3Service, cliOptions.profileName, CONCURRENCY);
+        process.exitCode = exitCode;
+    }
+}
+
+function applySecurityGuardrails(config: ComplianceConfig) {
     const allowlist = config.activeScanAllowlist || [];
     if (config.activeScanning) {
         if (!config.activeScanAllowed) {
             logger.warn('Active scanning requested but ACTIVE_SCAN_ALLOWED=false. Disabling active scan.');
-            (config as { activeScanning: boolean }).activeScanning = false;
+            config.activeScanning = false;
         } else if (allowlist.length > 0) {
-            const allowed = allowlist.some(allowedTarget => {
+            const allowed = allowlist.some((allowedTarget: string) => {
                 return config.LIVE_URL.includes(allowedTarget) || allowedTarget === config.LIVE_URL;
             });
             if (!allowed) {
                 logger.warn('Active scanning requested but target not in ACTIVE_SCAN_ALLOWLIST. Disabling active scan.');
-                (config as { activeScanning: boolean }).activeScanning = false;
+                config.activeScanning = false;
             }
         }
     }
+}
 
-    // Apply debug mode overrides from CLI flags
-    if (headedFlag || debugFlag) {
+function applyDebugOverrides(config: ComplianceConfig, cliOptions: CliOptions) {
+    if (cliOptions.headedFlag || cliOptions.debugFlag) {
         config.DEBUG_HEADED = true;
         logger.info('🔍 Debug: Headed mode enabled');
     }
-    if (debugFlag) {
+    if (cliOptions.debugFlag) {
         config.DEBUG_DEVTOOLS = true;
         config.DEBUG_PAUSE_ON_FAILURE = true;
         config.DEBUG_CAPTURE_CONSOLE = true;
         logger.info('🔍 Debug: Full debug mode enabled (devtools + pause on failure)');
     }
-    if (slowMoValue > 0) {
-        config.DEBUG_SLOW_MO = slowMoValue;
-        logger.info(`🔍 Debug: SlowMo set to ${slowMoValue}ms`);
+    if (cliOptions.slowMoValue > 0) {
+        config.DEBUG_SLOW_MO = cliOptions.slowMoValue;
+        logger.info(`🔍 Debug: SlowMo set to ${cliOptions.slowMoValue}ms`);
     }
+}
 
-    logger.info(`Loaded Profile: ${config.name}`);
-    logger.info(`Active Scanning: ${config.activeScanning ? 'ENABLED ⚠️' : 'Disabled'}`);
-
-
-    // Determine Targets
-    // Determine Targets
-    let targets: string[] = [];
-    if (Array.isArray(config.targetUrl)) {
-        targets = config.targetUrl;
-    } else if (config.targetUrl.endsWith('.json')) {
-        try {
-            const targetsPath = path.resolve(config.targetUrl);
-            logger.info(`Loading targets from: ${targetsPath}`);
-
-            if (fs.existsSync(targetsPath)) {
-                const fileContent = fs.readFileSync(targetsPath, 'utf-8');
-                const jsonData = JSON.parse(fileContent);
-
-                if (Array.isArray(jsonData)) {
-                    targets = jsonData;
-                } else if (jsonData.targets && Array.isArray(jsonData.targets)) {
-                    targets = jsonData.targets;
-                } else {
-                    throw new Error('Invalid JSON format. Expected array or object with "targets" array.');
-                }
-                logger.info(`Loaded ${targets.length} targets from file.`);
-            } else {
-                throw new Error(`File not found: ${targetsPath}`);
-            }
-        } catch (error) {
-            logger.error(`Failed to load targets file: ${error instanceof Error ? error.message : String(error)}`);
-            process.exit(1);
-        }
-    } else {
-        targets = [config.targetUrl];
-    }
-
-    logger.info(`Fleet Mode: ${targets.length > 1 ? 'Enabled' : 'Disabled'}`);
-    logger.info(`Targets: ${targets.length} sites to scan`);
-
-    const runner = new ComplianceRunner(config);
+/**
+ * Execute a full audit cycle
+ */
+async function executeAudit(
+    config: ComplianceConfig, 
+    targets: string[], 
+    v3Flags: V3FeatureFlags, 
+    v3Service: V3IntegrationService, 
+    profileName: string,
+    concurrency: number
+): Promise<number> {
     const fleetResults: FleetSiteResult[] = [];
-
     const startTime = Date.now();
+    const limit = pLimit(concurrency);
+    const trendService = new TrendService(logger);
 
     try {
-        logSection('Live Site Compliance Monitor - Fleet Execution');
+        logSection(`Live Site Compliance Monitor - Fleet Execution (Concurrency: ${concurrency})`);
 
-        // Loop through all targets
-        for (let i = 0; i < targets.length; i++) {
-            const target = targets[i];
+        // Create promises for all targets with concurrency limit
+        const scanPromises = targets.map((target, index) => limit(async () => {
+            // Instantiate runner per-target to ensure isolation
+            const runner = new ComplianceRunner(config);
+            
             logger.info('');
-            logger.info(`>>> Processing Target ${i + 1}/${targets.length}: ${target} <<<`);
+            logger.info(`>>> Starting Target ${index + 1}/${targets.length}: ${target} <<<`);
 
-            const progress = new ProgressReporter(`Target ${i + 1}/${targets.length}`);
-            const result = await runner.run(target, progress);
-            fleetResults.push(result);
-        }
+            const progress = new ProgressReporter(`Target ${index + 1}/${targets.length}`);
+            try {
+                const result = await runner.run(target, progress);
+                
+                // Record trend data
+                trendService.addRecord({
+                    timestamp: new Date().toISOString(),
+                    runId: startTime.toString(),
+                    targetUrl: target,
+                    overallScore: result.healthScore,
+                    performanceScore: result.scores?.performance || 0,
+                    securityCritical: result.criticalIssues
+                });
+                
+                return result;
+            } catch (error) {
+                logger.error(`Failed to scan target ${target}: ${error}`);
+                // Return failed result structure
+                return {
+                    url: target,
+                    domain: new URL(target).hostname,
+                    healthScore: 0,
+                    reportPath: '#',
+                    criticalIssues: 0,
+                    status: 'fail' as const
+                };
+            }
+        }));
+
+        // Wait for all scans to complete
+        const results = await Promise.all(scanPromises);
+        fleetResults.push(...results);
 
         // Generate Fleet Report
         if (targets.length > 0) {
             const fleetReportGenerator = new FleetReportGenerator(config.REPORTS_DIR);
-            const fleetDashboardPath = await fleetReportGenerator.generate(fleetResults);
+            const fleetDashboardPath = await fleetReportGenerator.generate(fleetResults, trendService.getAllHistory());
 
             logger.info('');
             logSection('Fleet Execution Complete');
@@ -265,7 +319,7 @@ async function main(): Promise<void> {
             })));
 
             // Send Webhook Alerts
-            if (config.webhook && config.webhook.url) {
+            if (config.webhook?.url) {
                 logSection('Sending Webhook Alerts');
                 for (const result of fleetResults) {
                     const summaryMock = {
@@ -294,98 +348,29 @@ async function main(): Promise<void> {
         // ══════════════════════════════════════════════════════════════
         // V3 Feature Processing
         // ══════════════════════════════════════════════════════════════
-        if (v3Flags.sarif || v3Flags.policy || v3Flags.compliance) {
+        if (v3Flags.sarif || v3Flags.policy || v3Flags.compliance || v3Flags.executiveReport) {
             logSection('v3 Feature Processing');
             
-            // Load the fleet summary JSON to get detailed findings
-            const fleetSummaryPath = path.join(config.REPORTS_DIR, 'fleet-summary.json');
-            if (fs.existsSync(fleetSummaryPath)) {
-                try {
-                    const summaryData = JSON.parse(fs.readFileSync(fleetSummaryPath, 'utf-8'));
-                    
-                    // Convert fleet summary to AuditReport format for v3 processing
-                    const syntheticReport = {
-                        timestamp: new Date().toISOString(),
-                        targetUrl: targets[0] || '',
-                        duration: totalDuration,
-                        performance: { score: summaryData.summary?.averageScore || 0, firstContentfulPaint: 0, largestContentfulPaint: 0, totalBlockingTime: 0, cumulativeLayoutShift: 0, speedIndex: 0, timeToInteractive: 0 },
-                        accessibility: { score: 0, issues: [] },
-                        security: { score: 0, headers: [], alerts: [], passiveOnly: true },
-                        userFlows: [],
-                        overallScore: summaryData.summary?.averageScore || 0,
-                        passed: !anyFailures,
-                    };
-
-                    // SARIF generation
-                    if (v3Flags.sarif) {
-                        const sarifPath = v3Flags.sarifPath || path.join(config.REPORTS_DIR, 'results.sarif');
-                        const findings = v3Service.convertToFindings(syntheticReport);
-                        const metadata = {
-                            targetUrl: targets[0] || '',
-                            startTime: new Date(Date.now() - totalDuration).toISOString(),
-                            endTime: new Date().toISOString(),
-                            version: V3_VERSION,
-                            profile: profileName,
-                        };
-                        const sarifReporter = new (await import('./v3/reporters/SarifReporter.js')).SarifReporter();
-                        const sarifLog = sarifReporter.generate(findings, metadata);
-                        
-                        // Ensure directory exists
-                        const sarifDir = path.dirname(sarifPath);
-                        if (!fs.existsSync(sarifDir)) {
-                            fs.mkdirSync(sarifDir, { recursive: true });
-                        }
-                        fs.writeFileSync(sarifPath, JSON.stringify(sarifLog, null, 2));
-                        logSuccess(`SARIF report: ${sarifPath}`);
-                    }
-
-                    // Policy evaluation
-                    if (v3Flags.policy && v3Flags.policyPath) {
-                        try {
-                            const findings = v3Service.convertToFindings(syntheticReport);
-                            const { PolicyEngine } = await import('./v3/core/PolicyEngine.js');
-                            const policyEngine = new PolicyEngine();
-                            policyEngine.loadFromFile(v3Flags.policyPath);
-                            
-                            const policyContext = {
-                                findings: findings.map(f => ({ id: f.id, type: f.type, severity: f.severity, title: f.title })),
-                                meta: { targetUrl: targets[0] || '', scanProfile: profileName, duration: totalDuration, timestamp: new Date().toISOString() },
-                            };
-                            const policyResult = policyEngine.evaluate(policyContext);
-                            
-                            if (policyResult.passed) {
-                                logSuccess(`Policy evaluation PASSED (${policyResult.passedPolicies.length} policies)`);
-                            } else {
-                                logFailure(`Policy evaluation FAILED: ${policyResult.failedPolicies.length} policies violated`);
-                                exitCode = Math.max(exitCode, policyResult.exitCode);
-                            }
-                        } catch (policyError) {
-                            logger.error(`Policy evaluation failed: ${policyError instanceof Error ? policyError.message : String(policyError)}`);
-                        }
-                    }
-
-                    // Compliance mapping
-                    if (v3Flags.compliance && v3Flags.complianceFrameworks.length > 0) {
-                        const findings = v3Service.convertToFindings(syntheticReport);
-                        const complianceResult = v3Service.mapCompliance(
-                            findings,
-                            v3Flags.complianceFrameworks.filter(f => f === 'soc2' || f === 'gdpr' || f === 'hipaa') as ('soc2' | 'gdpr' | 'hipaa')[]
-                        );
-                        v3Service.printComplianceSummary(complianceResult);
-                    }
-                } catch (v3Error) {
-                    logger.error(`v3 processing failed: ${v3Error instanceof Error ? v3Error.message : String(v3Error)}`);
-                }
-            } else {
-                logger.warn('Fleet summary not found, skipping v3 processing');
-            }
+            // Use extracted processor
+            const { processV3Features } = await import('./v3/processor.js');
+            exitCode = await processV3Features({
+                config, 
+                targets, 
+                v3Flags, 
+                v3Service, 
+                profileName, 
+                totalDuration, 
+                currentExitCode: exitCode, 
+                anyFailures,
+                trendService
+            });
         }
 
-        process.exitCode = exitCode;
+        return exitCode;
 
     } catch (error) {
         logFailure(`Fatal Fleet Error: ${error}`);
-        process.exitCode = 2;
+        return 2;
     }
 }
 
@@ -533,4 +518,4 @@ process.on('uncaughtException', (error) => {
     process.exit(1);
 });
 
-main();
+await main();
