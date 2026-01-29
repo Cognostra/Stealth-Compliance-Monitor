@@ -75,11 +75,22 @@ Options:
 
   --help, -h         Show this help message
 
+  --ai-fix[=model]   Generate local LLM remediation via Ollama
+                     Without model: uses OLLAMA_MODEL (default: codellama:13b)
+                     With model: e.g. --ai-fix=deepseek-coder:6.7b
+
+  --flutter-semantics  Enable Flutter web accessibility semantics checking
+
+  --target-type=electron  Audit an Electron app instead of a URL
+  --electron-path=<path>  Path to Electron executable
+  --electron-args=<args>  Extra args for the Electron process
+
 Profiles:
   smoke        Quick health check (1 page, no security tests)
   standard     Regular CI/CD scans (15 pages, passive only)
   deep         Full assessment (50 pages, black-box probes)
   deep-active  Full active scan (50 pages, ZAP spider + active)
+  fintech      Financial/crypto compliance (30 pages, PCI-DSS + crypto checks)
 
 v3 Features (${V3_VERSION}):
   SARIF output enables GitHub Code Scanning integration
@@ -90,10 +101,13 @@ Examples:
   npm start                           # Standard profile
   npm start -- --profile=smoke        # Quick smoke test
   npm start -- --profile=deep         # Deep passive scan
+  npm start -- --profile=fintech      # Fintech compliance scan
   npm start -- --active               # Active scanning (be careful!)
   npm start -- --sarif=results.sarif  # Output SARIF for GitHub
   npm start -- --compliance=soc2,gdpr # Include compliance mapping
   npm start -- --policy=.compliance-policy.yml  # Custom policy rules
+  npm start -- --ai-fix               # Generate local LLM remediations
+  npm start -- --target-type=electron --electron-path=/path/to/app  # Electron audit
 
 Environment Variables:
   See .env.example for full configuration options.
@@ -355,20 +369,72 @@ async function executeAudit(
         // ══════════════════════════════════════════════════════════════
         if (v3Flags.sarif || v3Flags.policy || v3Flags.compliance || v3Flags.executiveReport) {
             logSection('v3 Feature Processing');
-            
+
             // Use extracted processor
             const { processV3Features } = await import('./v3/processor.js');
             exitCode = await processV3Features({
-                config, 
-                targets, 
-                v3Flags, 
-                v3Service, 
-                profileName, 
-                totalDuration, 
-                currentExitCode: exitCode, 
+                config,
+                targets,
+                v3Flags,
+                v3Service,
+                profileName,
+                totalDuration,
+                currentExitCode: exitCode,
                 anyFailures,
                 trendService
             });
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // Local LLM Remediation (--ai-fix via Ollama)
+        // ══════════════════════════════════════════════════════════════
+        const cliOptions = parseCliOptions(process.argv.slice(2));
+        if (cliOptions.aiFixFlag) {
+            logSection('Local LLM Remediation (Ollama)');
+            try {
+                const { OllamaService } = await import('./services/OllamaService.js');
+                const ollama = new OllamaService({
+                    baseUrl: config.OLLAMA_URL,
+                    model: cliOptions.aiFixModel || config.OLLAMA_MODEL,
+                });
+
+                const available = await ollama.isAvailable();
+                if (!available) {
+                    logger.error(`Ollama not available at ${ollama.getBaseUrl()}. Ensure Ollama is running.`);
+                } else {
+                    // Read latest fleet summary for findings
+                    const summaryPath = `${config.REPORTS_DIR}/fleet-summary.json`;
+                    if (fs.existsSync(summaryPath)) {
+                        const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+                        const findings = (summary.results || [])
+                            .filter((r: { criticalIssues?: number; status?: string }) => (r.criticalIssues || 0) > 0 || r.status === 'fail')
+                            .slice(0, 5)
+                            .map((r: { url?: string; criticalIssues?: number; status?: string }) => ({
+                                findingType: 'compliance-failure',
+                                severity: (r.criticalIssues || 0) > 0 ? 'critical' : 'high',
+                                description: `Compliance failure for ${r.url || 'unknown'}`,
+                                url: r.url,
+                            }));
+
+                        if (findings.length > 0) {
+                            logger.info(`Generating remediations for ${findings.length} findings using ${ollama.getModel()}`);
+                            const results = await ollama.generateRemediations(findings, {
+                                onProgress: (current, total) => logger.info(`Remediation ${current}/${total}...`),
+                            });
+                            for (const result of results) {
+                                logger.info(`\n--- Remediation for: ${result.finding.findingType} ---`);
+                                console.log(result.remediation);
+                            }
+                        } else {
+                            logger.info('No critical findings to remediate.');
+                        }
+                    } else {
+                        logger.warn('No fleet summary found for AI remediation.');
+                    }
+                }
+            } catch (error) {
+                logger.error(`AI fix failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
         }
 
         return exitCode;

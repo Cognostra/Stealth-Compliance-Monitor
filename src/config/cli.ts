@@ -11,6 +11,18 @@ export interface CliOptions {
     debugFlag: boolean;
     slowMoValue: number;
     positionalTarget?: string;
+    /** Electron auditing: target type override */
+    targetType?: 'web' | 'electron';
+    /** Path to Electron executable */
+    electronPath?: string;
+    /** Extra args to pass to Electron */
+    electronArgs?: string;
+    /** Enable local LLM remediation via Ollama */
+    aiFixFlag: boolean;
+    /** Optional model override for --ai-fix */
+    aiFixModel?: string;
+    /** Enable Flutter semantics scanning */
+    flutterSemanticsFlag: boolean;
 }
 
 export function parseCliOptions(args: string[]): CliOptions {
@@ -30,6 +42,22 @@ export function parseCliOptions(args: string[]): CliOptions {
     const slowMoValue = slowMoArg ? Number.parseInt(slowMoArg.split('=')[1], 10) : 0;
     const positionalTarget = args.find(arg => !arg.startsWith('-'));
 
+    // Electron auditing flags
+    const targetTypeArg = args.find(arg => arg.startsWith('--target-type='));
+    const targetType = targetTypeArg ? targetTypeArg.split('=')[1] as 'web' | 'electron' : undefined;
+    const electronPathArg = args.find(arg => arg.startsWith('--electron-path='));
+    const electronPath = electronPathArg ? electronPathArg.split('=')[1] : undefined;
+    const electronArgsArg = args.find(arg => arg.startsWith('--electron-args='));
+    const electronArgs = electronArgsArg ? electronArgsArg.split('=')[1] : undefined;
+
+    // AI fix flag (--ai-fix or --ai-fix=model-name)
+    const aiFixArg = args.find(arg => arg.startsWith('--ai-fix'));
+    const aiFixFlag = !!aiFixArg;
+    const aiFixModel = aiFixArg && aiFixArg.includes('=') ? aiFixArg.split('=')[1] : undefined;
+
+    // Flutter semantics flag
+    const flutterSemanticsFlag = args.includes('--flutter-semantics');
+
     return {
         args,
         profileName,
@@ -37,7 +65,13 @@ export function parseCliOptions(args: string[]): CliOptions {
         headedFlag,
         debugFlag,
         slowMoValue,
-        positionalTarget
+        positionalTarget,
+        targetType,
+        electronPath,
+        electronArgs,
+        aiFixFlag,
+        aiFixModel,
+        flutterSemanticsFlag,
     };
 }
 

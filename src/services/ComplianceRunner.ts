@@ -24,6 +24,7 @@ import { NetworkIncident } from './NetworkSpy.js';
 import { LeakedSecret } from './SecretScanner.js';
 import { Page } from 'playwright';
 import { VisualRegressionService, VisualDiffResult } from '../v3/services/VisualRegressionService.js';
+import { FintechScanner } from './FintechScanner.js';
 
 interface DeviceScanResult {
     device: string;
@@ -38,6 +39,7 @@ interface DeviceScanResult {
     leakedSecrets: LeakedSecret[];
     screenshotPath?: string;
     visualResult?: VisualDiffResult;
+    fintechFindings?: import('./FintechScanner.js').FintechFinding[];
 }
 
 interface VulnIntelResult {
@@ -550,6 +552,14 @@ export class ComplianceRunner {
         const integrityService = new DataIntegrityService(browserService);
         const auditService = new AuditService();
 
+        // Register FintechScanner if using fintech profile
+        let fintechScanner: FintechScanner | null = null;
+        if (this.config.name === 'Fintech') {
+            const customDomains = process.env.FINTECH_CUSTOM_MINER_DOMAINS?.split(',').map(d => d.trim()).filter(Boolean) || [];
+            fintechScanner = new FintechScanner(customDomains);
+            browserService.registerScanner(fintechScanner);
+        }
+
         try {
             await this.initializeBrowserSession(browserService, device, runConfig, progress);
             await this.performAuthentication(authService, targetUrl, device, progress);
@@ -573,9 +583,25 @@ export class ComplianceRunner {
 
             const securityResult = await this.runSecurityAssessment(page, targetUrl, visitedUrls, device);
 
+            // Run fintech page-level checks if scanner is active
+            let fintechFindings: import('./FintechScanner.js').FintechFinding[] | undefined;
+            if (fintechScanner && page) {
+                try {
+                    fintechFindings = await fintechScanner.runPageChecks(page);
+                    if (fintechFindings.length > 0) {
+                        logger.warn(`💰 Fintech scanner found ${fintechFindings.length} issues`);
+                        for (const finding of fintechFindings) {
+                            await persistenceService.log('security_finding', { ...finding, source: 'fintech-scanner', device });
+                        }
+                    }
+                } catch (fintechError) {
+                    logger.warn(`Fintech page checks failed: ${fintechError instanceof Error ? fintechError.message : String(fintechError)}`);
+                }
+            }
+
             const customCheckResults = await this.runCustomChecks(
                 page, {
-                    targetUrl, visitedUrls, device, runConfig, 
+                    targetUrl, visitedUrls, device, runConfig,
                     customCheckLoader, customChecksLoaded, progress
                 }
             );
@@ -592,7 +618,8 @@ export class ComplianceRunner {
                 networkIncidents: browserService.getNetworkIncidents(),
                 leakedSecrets: browserService.getLeakedSecrets(),
                 screenshotPath,
-                visualResult
+                visualResult,
+                fintechFindings
             };
         } finally {
             await browserService.close();

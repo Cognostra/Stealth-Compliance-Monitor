@@ -125,6 +125,13 @@ export const PROFILES: Record<string, RuntimeProfile> = {
         concurrency: 3, // Lower concurrency for active scanning
         activeSecurity: true,
         activeScanning: true,
+    },
+    'fintech': {
+        name: 'Fintech',
+        maxPages: 30,
+        concurrency: 3,
+        activeSecurity: true,
+        activeScanning: false,
     }
 };
 

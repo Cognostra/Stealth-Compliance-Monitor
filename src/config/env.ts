@@ -158,6 +158,26 @@ export interface EnvConfig {
     CRON_SCHEDULE?: string;
     /** Allowed directories for policy files (comma-separated, prevents path traversal) */
     POLICY_ALLOWED_DIRS: string[];
+
+    // Ollama / Local LLM Options
+    /** Ollama API base URL */
+    OLLAMA_URL: string;
+    /** Default Ollama model for remediation */
+    OLLAMA_MODEL: string;
+    /** AI provider selection: 'openai' or 'ollama' */
+    AI_PROVIDER: string;
+
+    // Flutter Semantics Options
+    /** Enable Flutter web semantics accessibility scanning */
+    FLUTTER_SEMANTICS_ENABLED: boolean;
+
+    // Python Plugin Bridge Options
+    /** Enable Python custom checks */
+    PYTHON_CHECKS_ENABLED: boolean;
+    /** Python executable path */
+    PYTHON_EXECUTABLE: string;
+    /** Python check timeout (ms) */
+    PYTHON_CHECK_TIMEOUT: number;
 }
 
 /**
@@ -353,7 +373,20 @@ export function loadEnvConfig(): EnvConfig {
         POLICY_ALLOWED_DIRS: getOptional('POLICY_ALLOWED_DIRS', './policies,.')
             .split(',')
             .map(d => d.trim())
-            .filter(d => d.length > 0)
+            .filter(d => d.length > 0),
+
+        // Ollama / Local LLM Options
+        OLLAMA_URL: getOptional('OLLAMA_URL', 'http://localhost:11434'),
+        OLLAMA_MODEL: getOptional('OLLAMA_MODEL', 'codellama:13b'),
+        AI_PROVIDER: getOptional('AI_PROVIDER', 'openai'),
+
+        // Flutter Semantics Options
+        FLUTTER_SEMANTICS_ENABLED: getOptional('FLUTTER_SEMANTICS_ENABLED', 'false').toLowerCase() === 'true',
+
+        // Python Plugin Bridge Options
+        PYTHON_CHECKS_ENABLED: getOptional('PYTHON_CHECKS_ENABLED', 'false').toLowerCase() === 'true',
+        PYTHON_EXECUTABLE: getOptional('PYTHON_EXECUTABLE', 'python3'),
+        PYTHON_CHECK_TIMEOUT: getNumber('PYTHON_CHECK_TIMEOUT', 60000),
     };
 
     // Parse Performance Budget

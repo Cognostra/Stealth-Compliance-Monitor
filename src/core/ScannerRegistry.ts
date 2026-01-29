@@ -85,6 +85,8 @@ export interface ScannerResultMap {
     'ConsoleMonitor': import('../services/ConsoleMonitor.js').ConsoleError[];
     'SupabaseSecurityScanner': import('../services/SupabaseSecurityScanner.js').SupabaseSecurityIssue[];
     'FrontendVulnerabilityScanner': import('../services/FrontendVulnerabilityScanner.js').VulnerableLibrary[];
+    'FintechScanner': import('../services/FintechScanner.js').FintechFinding[];
+    'FlutterSemanticsScanner': import('../services/FlutterSemanticsScanner.js').FlutterSemanticsIssue[];
     [key: string]: unknown;
 }
 

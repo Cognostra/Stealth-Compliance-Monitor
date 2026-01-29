@@ -16,6 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Page } from 'playwright';
 import { Logger } from '../types/index.js';
+import { PythonCheckRunner, PythonCheckContext } from './PythonCheckRunner.js';
 
 /**
  * Result of a single custom check
@@ -110,6 +111,8 @@ export class CustomCheckLoader {
     private readonly timeout: number;
     private loadedChecks: LoadedCheck[] = [];
     private isLoaded: boolean = false;
+    private readonly pythonEnabled: boolean;
+    private readonly pythonRunner: PythonCheckRunner | null;
 
     constructor(
         logger: Logger,
@@ -119,6 +122,14 @@ export class CustomCheckLoader {
         this.logger = logger;
         this.checksDir = path.resolve(checksDir);
         this.timeout = timeout;
+        this.pythonEnabled = process.env.PYTHON_CHECKS_ENABLED === 'true';
+        this.pythonRunner = this.pythonEnabled
+            ? new PythonCheckRunner(logger, {
+                pythonDir: path.join(this.checksDir, 'python'),
+                pythonExecutable: process.env.PYTHON_EXECUTABLE,
+                timeout: Number(process.env.PYTHON_CHECK_TIMEOUT) || 60000,
+            })
+            : null;
     }
 
     /**
@@ -216,12 +227,50 @@ export class CustomCheckLoader {
 
         const results: CustomCheckResult[] = [];
 
+        // Run TypeScript/JavaScript checks
         for (const loadedCheck of this.loadedChecks) {
             const result = await this.executeCheck(loadedCheck, page, context);
             results.push(result);
         }
 
+        // Run Python checks if enabled
+        if (this.pythonRunner) {
+            const pythonResults = await this.runPythonChecks(context);
+            results.push(...pythonResults);
+        }
+
         return results;
+    }
+
+    /**
+     * Run all Python check scripts and convert results to CustomCheckResult format.
+     */
+    private async runPythonChecks(context: CustomCheckContext): Promise<CustomCheckResult[]> {
+        if (!this.pythonRunner) return [];
+
+        const pythonContext: PythonCheckContext = {
+            targetUrl: context.targetUrl,
+            currentUrl: context.currentUrl,
+            visitedUrls: context.visitedUrls,
+            profile: context.profile,
+        };
+
+        try {
+            const pythonResults = await this.pythonRunner.runAll(pythonContext);
+            return pythonResults.map(({ name, result }) => ({
+                name: `python/${name}`,
+                passed: result.violations.length === 0 && result.exitCode === 0,
+                violations: result.violations.map(v => ({
+                    ...v,
+                    url: v.url || pythonContext.currentUrl,
+                })),
+                duration: result.duration,
+                error: result.exitCode !== 0 ? result.stderr : undefined,
+            }));
+        } catch (error) {
+            this.logger.error(`Python checks failed: ${error instanceof Error ? error.message : String(error)}`);
+            return [];
+        }
     }
 
     /**

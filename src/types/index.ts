@@ -141,6 +141,23 @@ export interface ZapService {
 }
 
 // Logger Types
+// Electron Auditing Types
+export interface ElectronSecurityFinding {
+    type: 'node-integration' | 'context-isolation' | 'ipc-exposure' | 'remote-module' | 'missing-csp';
+    severity: 'critical' | 'high' | 'medium';
+    description: string;
+    remediation: string;
+}
+
+// Flutter Semantics Types
+export interface FlutterSemanticsIssue {
+    type: 'missing-semantics' | 'incomplete-aria' | 'missing-focus' | 'missing-label' | 'missing-role' | 'missing-live-region';
+    severity: 'high' | 'medium' | 'low';
+    element: string;
+    description: string;
+    url?: string;
+}
+
 export type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 export interface Logger {
