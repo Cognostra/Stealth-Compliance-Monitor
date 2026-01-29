@@ -282,3 +282,9 @@ gitleaks-results/
 # │ DOCUMENTATION & PRDs                                                        │
 # └─────────────────────────────────────────────────────────────────────────────┘
 stealth-compliance-monitor-prd.md
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.github/instructions/snyk_rules.instructions.md
+
+# Snyk Security Extension - AI Rules (auto-generated)
+.agent/rules/snyk_rules.md

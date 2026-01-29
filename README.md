@@ -29,6 +29,8 @@ Unlike static code analysis (SAST), LSCM uses headless browsers to interact with
 - **🛡️ Policy-as-Code**: Enforce custom pass/fail criteria via YAML (`.compliance-policy.yml`).
 - **🤖 Continuous Monitoring**: Built-in cron scheduler for daemon-mode auditing.
 - **📁 SARIF Support**: Native integration with GitHub Code Scanning.
+- **🔒 Security Hardening**: 22 vulnerabilities addressed; centralized constants, stricter path validation, and enhanced error handling (see Migration Guide).
+- **⚙️ New CLI Flags**: `--sarif`, `--policy`, `--compliance` for SARIF export and policy evaluation.
 
 ---
 
@@ -112,6 +114,9 @@ npx ts-node src/index.ts [options]
 | `--headed` | Run browser normally (visible) for debugging |
 | `--debug` | Enable full debug mode (pause on failure, devtools) |
 | `--slow-mo=<ms>` | Slow down browser actions by N milliseconds |
+| `--sarif[=path]` | Output SARIF 2.1 report (optional path; defaults to reports/results.sarif) |
+| `--policy=<path>` | Evaluate a specific policy YAML file during processing |
+| `--compliance` | Enable compliance mapping (SOC2/GDPR/HIPAA) during report generation |
 | `init` | Launch the interactive configuration wizard |
 
 ---
@@ -138,6 +143,43 @@ policies:
 The scanner will evaluate these rules post-audit and exit with error code 1 if any "fail" policy is violated.
 
 ---
+
+## 🔐 POLICY_ALLOWED_DIRS
+
+To reduce risk from untrusted policy files, v3 introduces strict directory allow-listing for policy files. Set the POLICY_ALLOWED_DIRS environment variable to a comma-separated list of directories that policy files may be loaded from (defaults: `./policies,.`).
+
+Example:
+
+```bash
+export POLICY_ALLOWED_DIRS=./policies,./config
+```
+
+If a policy path is outside these directories, the PolicyEngine will reject it and throw an error. See the Migration Guide below for details.
+
+---
+
+## 🌐 Fleet Mode & Concurrency
+
+---
+
+## Migration Guide (v2 -> v3)
+
+v3 introduces several breaking changes focused on security hardening and stricter validation. Follow these steps to migrate safely:
+
+1. Path validation: Policy file paths are now validated against POLICY_ALLOWED_DIRS (default `./policies,.`). Move any custom policy files into one of the allowed directories or update `POLICY_ALLOWED_DIRS` in your environment.
+
+2. Constants centralization: Magic numbers and limits (e.g., YAML size limits, regex timeouts) moved to `src/v3/utils/constants.ts`. If your code depends on internal constants, update imports accordingly.
+
+3. Error handling: File system operations may now throw more specific errors (e.g., `Permission denied reading policy file`). Ensure any integrations that read policy files handle these errors or run with appropriate permissions.
+
+4. CLI flags: New flags `--sarif`, `--policy`, and `--compliance` were added. Scripts that relied on positional arguments should be updated to use these flags.
+
+5. Docker: Dockerfile was optimized; baseline snapshot COPY step was removed. If your CI relied on that COPY step, add a separate step to inject baseline snapshots into `/app/snapshots/baseline/`.
+
+6. Memory management: TrendService now exposes `cleanupOldRecords()` to prune historical data. If you persist TrendService data externally, schedule periodic cleanup to limit disk usage.
+
+If you need help migrating, open an issue or request a migration patch with the repository owner.
+
 
 ## 🌐 Fleet Mode & Concurrency
 

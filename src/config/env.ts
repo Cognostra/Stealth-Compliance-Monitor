@@ -156,6 +156,8 @@ export interface EnvConfig {
     RUN_TAG?: string;
     /** Cron schedule for continuous monitoring */
     CRON_SCHEDULE?: string;
+    /** Allowed directories for policy files (comma-separated, prevents path traversal) */
+    POLICY_ALLOWED_DIRS: string[];
 }
 
 /**
@@ -347,7 +349,11 @@ export function loadEnvConfig(): EnvConfig {
         VISUAL_BASELINE_AUTO_APPROVE: getOptional('VISUAL_BASELINE_AUTO_APPROVE', 'false').toLowerCase() === 'true',
         REDACTION_ENABLED: getOptional('REDACTION_ENABLED', 'true').toLowerCase() === 'true',
         RUN_TAG: getOptional('RUN_TAG', ''),
-        CRON_SCHEDULE: getOptional('CRON_SCHEDULE', '')
+        CRON_SCHEDULE: getOptional('CRON_SCHEDULE', ''),
+        POLICY_ALLOWED_DIRS: getOptional('POLICY_ALLOWED_DIRS', './policies,.')
+            .split(',')
+            .map(d => d.trim())
+            .filter(d => d.length > 0)
     };
 
     // Parse Performance Budget

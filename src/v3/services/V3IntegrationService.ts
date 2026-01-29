@@ -12,6 +12,7 @@ import type { PolicyEvaluationContext, PolicyEvaluationResult, PolicyMatchedFind
 import type { ComplianceFrameworkDefinition, ComplianceControl } from '../types/compliance.js';
 import type { AuditReport, SecurityAlert, AccessibilityIssue } from '../../types/index.js';
 import { logger } from '../../utils/logger.js';
+import { generateId as cryptoGenerateId } from '../utils/crypto.js';
 
 /**
  * Framework IDs we support
@@ -275,15 +276,12 @@ export class V3IntegrationService {
 
     /**
      * Generate a unique ID from name and URL
+     *
+     * Uses SHA-256 for collision resistance.
+     * Replaces weak Java-style hash with cryptographic hash.
      */
     private generateId(name: string, url?: string): string {
-        const str = `${name}|${url || ''}`;
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash) + str.charCodeAt(i);
-            hash = hash & hash;
-        }
-        return Math.abs(hash).toString(16).padStart(8, '0');
+        return cryptoGenerateId(name, url);
     }
 
     /**

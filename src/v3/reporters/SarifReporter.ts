@@ -11,6 +11,7 @@ import type {
     SarifLevel,
 } from '../types/sarif.js';
 import { severityToSarifLevel, severityToSecurityScore } from '../types/sarif.js';
+import { generateFingerprint as cryptoGenerateFingerprint, generateHash } from '../utils/crypto.js';
 
 /**
  * Generic finding interface that can be mapped to SARIF
@@ -230,20 +231,20 @@ export class SarifReporter {
 
     /**
      * Convert CSS selector to a pseudo line number
-     * Uses hash for consistent mapping
+     *
+     * Uses secure hash for consistent mapping.
+     * Replaces weak Java-style hash with SHA-256.
      */
     private selectorToLine(selector?: string): number {
         if (!selector) return 1;
 
-        // Simple hash to generate a consistent line number
-        let hash = 0;
-        for (let i = 0; i < selector.length; i++) {
-            hash = ((hash << 5) - hash) + selector.charCodeAt(i);
-            hash = hash & hash; // Convert to 32-bit integer
-        }
+        // Use secure hash and convert to line number
+        const hash = generateHash(selector, 'sha256', 'hex');
+        // Take first 8 chars of hash and convert to number
+        const numericHash = parseInt(hash.substring(0, 8), 16);
 
-        // Return positive number, minimum 1
-        return Math.abs(hash % 1000) + 1;
+        // Return positive number, minimum 1, max 9999
+        return (numericHash % 9999) + 1;
     }
 
     /**
@@ -289,6 +290,9 @@ export class SarifReporter {
 
     /**
      * Generate fingerprint for finding deduplication
+     *
+     * Uses SHA-256 for collision resistance and security.
+     * Replaces weak Java-style hash with cryptographic hash.
      */
     private generateFingerprint(finding: LscmFinding): string {
         const parts = [
@@ -297,15 +301,8 @@ export class SarifReporter {
             finding.selector || '',
         ];
 
-        // Simple hash
-        const str = parts.join('|');
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            hash = ((hash << 5) - hash) + str.charCodeAt(i);
-            hash = hash & hash;
-        }
-
-        return Math.abs(hash).toString(16).padStart(8, '0');
+        // Use secure SHA-256 hashing
+        return cryptoGenerateFingerprint(parts, 8);
     }
 
     /**

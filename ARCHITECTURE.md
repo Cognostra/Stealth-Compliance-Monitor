@@ -171,6 +171,10 @@ stealth-compliance-monitor/
 │   │   │   └── CronScheduler.ts    # Continuous monitoring
 │   │   └── services/
 │   │       └── TrendService.ts     # Historical analysis
+│   │   └── utils/                  # V3-specific utilities
+│   │       ├── constants.ts        # Centralized magic numbers and limits
+│   │       ├── crypto.ts           # Secure hashing and key utilities
+│   │       └── validation.ts       # Path & input validators (POLICY_ALLOWED_DIRS)
 │   │
 │   ├── types/                      # TypeScript definitions
 │   └── utils/                      # Shared utilities
@@ -226,6 +230,8 @@ stealth-compliance-monitor/
 | **Executive PDF** | `ExecutiveReporter` | One-page high-level summary for leadership |
 | **Continuous Monitoring** | `CronScheduler` | Built-in daemon for scheduled audits |
 | **Visual Regression** | `VisualSentinel` | Pixel-perfect layout change detection |
+| **Security Hardening** | `v3/utils/constants.ts` + `validation.ts` | Centralized constants, file-size and path validation, and stricter YAML parsing limits (22 issues addressed) |
+| **Circuit Breaker & Cleanup** | `CronScheduler` + `TrendService` | Circuit breaker for scheduled scans and TrendService.cleanupOldRecords to limit memory growth |
 
 ---
 

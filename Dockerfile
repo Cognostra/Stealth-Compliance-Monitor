@@ -25,29 +25,26 @@ WORKDIR /app
 # Copy package files first (for better layer caching)
 COPY package.json package-lock.json* ./
 
-# Install dependencies (use npm ci for reproducible builds)
-# --ignore-scripts prevents postinstall scripts that might fail in container
-RUN npm ci --ignore-scripts
-
-# Install Playwright browsers (in case they're not fully installed)
-# This ensures compatibility with the installed playwright version
-RUN npx playwright install chromium --with-deps
-
-# Copy TypeScript config
+# Copy TypeScript config and source code
 COPY tsconfig.json ./
-
-# Copy source code
 COPY src/ ./src/
 
-# Build TypeScript to JavaScript
-RUN npm run build
+# Install dependencies, build TypeScript, and prepare directories
+# Combined into single RUN to reduce Docker layers
+RUN npm ci --ignore-scripts && \
+    npx playwright install chromium --with-deps && \
+    npm run build && \
+    mkdir -p /app/reports \
+             /app/logs \
+             /app/screenshots \
+             /app/snapshots/baseline \
+             /app/snapshots/current \
+             /app/snapshots/diff \
+             /app/cache && \
+    chown -R pwuser:pwuser /app
 
-# Create directories for outputs with proper permissions
-RUN mkdir -p /app/reports /app/logs /app/screenshots /app/snapshots/baseline /app/snapshots/current /app/snapshots/diff /app/cache \
-    && chown -R pwuser:pwuser /app
-
-# Copy any existing baseline snapshots (if they exist)
-COPY --chown=pwuser:pwuser snapshots/baseline/ ./snapshots/baseline/ 2>/dev/null || true
+# Note: To include baseline snapshots in the image, create snapshots/baseline/
+# directory in your build context and add .png files there before building
 
 # Switch to non-root user for security
 USER pwuser

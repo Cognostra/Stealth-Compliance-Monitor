@@ -6,6 +6,8 @@ import { V3FeatureFlags, V3IntegrationService, V3_VERSION } from './index.js';
 import { TrendService } from './services/TrendService.js';
 import { logger, logSuccess, logFailure } from '../utils/logger.js';
 import { ExecutiveReportGenerator, ReportData } from '../services/ExecutiveReportGenerator.js';
+import { isAuditReport, validateFilePath } from './utils/validation.js';
+import type { AuditReport } from '../types/index.js';
 
 export interface V3ProcessingOptions {
     config: ComplianceConfig;
@@ -36,6 +38,29 @@ interface SyntheticReport {
     userFlows: unknown[];
     overallScore: number;
     passed: boolean;
+}
+
+/**
+ * Safely convert SyntheticReport to AuditReport
+ *
+ * Uses type guard to validate structure at runtime before conversion.
+ * Replaces unsafe `as any` casts with validated conversion.
+ *
+ * @param report - The synthetic report to convert
+ * @returns Validated AuditReport
+ * @throws Error if report structure is invalid
+ */
+function toAuditReport(report: SyntheticReport): AuditReport {
+    // Validate that the report has the required AuditReport structure
+    if (!isAuditReport(report)) {
+        throw new Error(
+            'Invalid report structure: SyntheticReport does not match AuditReport interface. ' +
+            'This may indicate a data corruption or incomplete report generation.'
+        );
+    }
+
+    // TypeScript now knows this is an AuditReport
+    return report;
 }
 
 export async function processV3Features(options: V3ProcessingOptions): Promise<number> {
@@ -106,8 +131,24 @@ function createSyntheticReport(summaryData: FleetSummary, targets: string[], tot
 
 async function generateSarifReport(v3Flags: V3FeatureFlags, v3Service: V3IntegrationService, syntheticReport: SyntheticReport, config: ComplianceConfig, profileName: string, totalDuration: number) {
     const sarifPath = v3Flags.sarifPath || path.join(config.REPORTS_DIR, 'results.sarif');
-    // Cast to AuditReport is safe here as SyntheticReport is an approximation
-    const findings = v3Service.convertToFindings(syntheticReport as unknown as import('../types/index.js').AuditReport);
+
+    // Validate SARIF output path to prevent path traversal
+    const pathValidation = validateFilePath(sarifPath, {
+        allowedDirs: [config.REPORTS_DIR, path.resolve(config.REPORTS_DIR)],
+        requiredExtensions: ['.sarif', '.json'],
+        mustExist: false, // File doesn't exist yet
+    });
+
+    if (!pathValidation.valid) {
+        throw new Error(`SARIF path validation failed: ${pathValidation.error}`);
+    }
+
+    // Use the validated normalized path
+    const validatedSarifPath = pathValidation.normalizedPath!;
+
+    // Use safe conversion with runtime validation
+    const auditReport = toAuditReport(syntheticReport);
+    const findings = v3Service.convertToFindings(auditReport);
     const metadata = {
         targetUrl: syntheticReport.targetUrl,
         startTime: new Date(Date.now() - totalDuration).toISOString(),
@@ -117,19 +158,21 @@ async function generateSarifReport(v3Flags: V3FeatureFlags, v3Service: V3Integra
     };
     const sarifReporter = new (await import('./reporters/SarifReporter.js')).SarifReporter();
     const sarifLog = sarifReporter.generate(findings, metadata);
-    
+
     // Ensure directory exists
-    const sarifDir = path.dirname(sarifPath);
+    const sarifDir = path.dirname(validatedSarifPath);
     if (!fs.existsSync(sarifDir)) {
         fs.mkdirSync(sarifDir, { recursive: true });
     }
-    fs.writeFileSync(sarifPath, JSON.stringify(sarifLog, null, 2));
-    logSuccess(`SARIF report: ${sarifPath}`);
+    fs.writeFileSync(validatedSarifPath, JSON.stringify(sarifLog, null, 2));
+    logSuccess(`SARIF report: ${validatedSarifPath}`);
 }
 
 async function evaluatePolicy(policyPath: string, v3Service: V3IntegrationService, syntheticReport: SyntheticReport, targetUrl: string, profileName: string, totalDuration: number, currentExitCode: number): Promise<number> {
     try {
-        const findings = v3Service.convertToFindings(syntheticReport as any);
+        // Use safe conversion with runtime validation
+        const auditReport = toAuditReport(syntheticReport);
+        const findings = v3Service.convertToFindings(auditReport);
         const { PolicyEngine } = await import('./core/PolicyEngine.js');
         const policyEngine = new PolicyEngine();
         policyEngine.loadFromFile(policyPath);
@@ -153,7 +196,9 @@ async function evaluatePolicy(policyPath: string, v3Service: V3IntegrationServic
 }
 
 function processCompliance(v3Flags: V3FeatureFlags, v3Service: V3IntegrationService, syntheticReport: SyntheticReport) {
-    const findings = v3Service.convertToFindings(syntheticReport as any);
+    // Use safe conversion with runtime validation
+    const auditReport = toAuditReport(syntheticReport);
+    const findings = v3Service.convertToFindings(auditReport);
     
     // Use Set for optimized lookups
     const validFrameworks = new Set(['soc2', 'gdpr', 'hipaa']);

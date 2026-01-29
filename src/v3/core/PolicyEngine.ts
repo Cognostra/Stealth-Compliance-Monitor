@@ -18,6 +18,8 @@ import type {
     ConditionNode,
     PolicyOperator,
 } from '../types/policy.js';
+import { validateRegexSafety, validateFilePath, validateYamlSafety, REGEX_TIMEOUT_MS } from '../utils/validation.js';
+import { LIMITS } from '../utils/constants.js';
 
 /**
  * Token types for the expression lexer
@@ -46,48 +48,185 @@ export class PolicyEngine {
     private context: PolicyEvaluationContext | null = null;
 
     /**
-     * Load policies from a YAML file
+     * Load policies from a YAML file with path validation
+     *
+     * @param filePath - Path to the policy YAML file
+     * @param allowedDirs - Optional array of allowed directories (defaults to env config)
+     * @throws Error if path validation fails or file cannot be read
      */
-    loadFromFile(filePath: string): void {
-        const absolutePath = path.resolve(filePath);
-
-        if (!fs.existsSync(absolutePath)) {
-            throw new Error(`Policy file not found: ${absolutePath}`);
+    loadFromFile(filePath: string, allowedDirs?: string[]): void {
+        // Determine allowed directories
+        let allowedDirectories = allowedDirs;
+        if (!allowedDirectories) {
+            // Try to get from environment config
+            try {
+                const envConfig = process.env.POLICY_ALLOWED_DIRS;
+                if (envConfig) {
+                    allowedDirectories = envConfig.split(',').map(d => d.trim()).filter(d => d.length > 0);
+                } else {
+                    // Default to current directory and ./policies
+                    allowedDirectories = ['.', './policies'];
+                }
+            } catch {
+                // If config not available, default to current directory only
+                allowedDirectories = ['.', './policies'];
+            }
         }
 
-        const content = fs.readFileSync(absolutePath, 'utf-8');
-        this.loadFromString(content);
+        // Validate file path to prevent path traversal attacks
+        const validation = validateFilePath(filePath, {
+            allowedDirs: allowedDirectories,
+            requiredExtensions: ['.yml', '.yaml'],
+            mustExist: true,
+        });
+
+        if (!validation.valid) {
+            throw new Error(`Policy file path validation failed: ${validation.error}`);
+        }
+
+        // Use the validated normalized path
+        const absolutePath = validation.normalizedPath!;
+
+        // Check file size before reading to prevent memory exhaustion
+        try {
+            const stats = fs.statSync(absolutePath);
+            if (stats.size > LIMITS.YAML_MAX_SIZE_BYTES) {
+                throw new Error(
+                    `Policy file too large: ${stats.size} bytes exceeds maximum of ${LIMITS.YAML_MAX_SIZE_BYTES} bytes (${LIMITS.YAML_MAX_SIZE_BYTES / 1024 / 1024}MB)`
+                );
+            }
+
+            const content = fs.readFileSync(absolutePath, 'utf-8');
+            this.loadFromString(content);
+        } catch (error) {
+            // Specific error handling for common filesystem issues
+            if (error instanceof Error) {
+                const nodeError = error as NodeJS.ErrnoException;
+                if (nodeError.code === 'EACCES') {
+                    throw new Error(`Permission denied reading policy file: ${absolutePath}`);
+                } else if (nodeError.code === 'ENOENT') {
+                    throw new Error(`Policy file not found: ${absolutePath}`);
+                } else if (nodeError.code === 'EISDIR') {
+                    throw new Error(`Path is a directory, not a file: ${absolutePath}`);
+                } else {
+                    // Re-throw the original error if it's not a filesystem error
+                    throw error;
+                }
+            }
+            throw error;
+        }
     }
 
     /**
-     * Load policies from a YAML string
+     * Load policies from a YAML string with safety validation
+     *
+     * @param yamlContent - YAML content as string
+     * @throws Error if YAML is unsafe or invalid
      */
     loadFromString(yamlContent: string): void {
+        // Validate YAML safety to prevent YAML bomb attacks
+        const yamlValidation = validateYamlSafety(yamlContent);
+        if (!yamlValidation.safe) {
+            throw new Error(`YAML safety validation failed: ${yamlValidation.error}`);
+        }
+
+        // Parse YAML
         const config = yaml.load(yamlContent) as PolicyConfig;
 
         if (!config || !Array.isArray(config.policies)) {
             throw new Error('Invalid policy configuration: missing policies array');
         }
 
+        // Limit number of policies to prevent resource exhaustion
+        if (config.policies.length > LIMITS.MAX_POLICIES_PER_FILE) {
+            throw new Error(
+                `Too many policies defined (${config.policies.length} > ${LIMITS.MAX_POLICIES_PER_FILE}). ` +
+                `This may indicate a malicious configuration.`
+            );
+        }
+
         this.policies = config.policies.filter((p) => p.enabled !== false);
     }
 
     /**
-     * Load policies directly from objects
+     * Load policies directly from Policy objects
+     *
+     * Useful for programmatic policy creation or testing.
+     * Filters out disabled policies automatically.
+     *
+     * @param policies - Array of policy objects to load
+     *
+     * @example
+     * ```typescript
+     * const engine = new PolicyEngine();
+     * engine.loadPolicies([
+     *   {
+     *     name: 'No Critical Vulnerabilities',
+     *     condition: 'severity == "critical"',
+     *     action: 'fail',
+     *     enabled: true
+     *   }
+     * ]);
+     * ```
      */
     loadPolicies(policies: Policy[]): void {
         this.policies = policies.filter((p) => p.enabled !== false);
     }
 
     /**
-     * Get loaded policies
+     * Get currently loaded policies
+     *
+     * Returns a copy of the policies array to prevent external modification.
+     * Only includes enabled policies (disabled policies are filtered out during loading).
+     *
+     * @returns Array of loaded Policy objects (defensive copy)
+     *
+     * @example
+     * ```typescript
+     * const engine = new PolicyEngine();
+     * engine.loadFromFile('policies.yml');
+     * const policies = engine.getPolicies();
+     * console.log(`Loaded ${policies.length} policies`);
+     * ```
      */
     getPolicies(): Policy[] {
         return [...this.policies];
     }
 
     /**
-     * Evaluate all policies against the provided context
+     * Evaluate all loaded policies against the provided context
+     *
+     * Executes each enabled policy's condition expression against the scan results.
+     * Policies are evaluated independently, and results are categorized by action (fail/warn/info).
+     *
+     * A policy "passes" if its condition does NOT match (i.e., no violations found).
+     * A policy "fails" if its condition matches (violations detected).
+     *
+     * @param context - Evaluation context containing findings, metadata, and scores
+     * @returns Evaluation result with pass/fail status and categorized policy results
+     *
+     * @example
+     * ```typescript
+     * const engine = new PolicyEngine();
+     * engine.loadFromFile('policies.yml');
+     *
+     * const result = engine.evaluate({
+     *   findings: [
+     *     { id: '1', type: 'xss', severity: 'critical', title: 'XSS Found' }
+     *   ],
+     *   meta: {
+     *     targetUrl: 'https://example.com',
+     *     scanProfile: 'standard',
+     *     duration: 5000,
+     *     timestamp: new Date().toISOString()
+     *   }
+     * });
+     *
+     * if (!result.passed) {
+     *   console.error(`Policy violations: ${result.failedPolicies.length}`);
+     *   process.exit(result.exitCode);
+     * }
+     * ```
      */
     evaluate(context: PolicyEvaluationContext): PolicyEvaluationResult {
         this.context = context;
@@ -279,16 +418,16 @@ export class PolicyEngine {
 
             // Logical operators
             let foundLogical = false;
-            for (const log of logicals) {
-                if (expression.slice(pos, pos + log.length).toUpperCase() === log.toUpperCase()) {
+            for (const logicalOperator of logicals) {
+                if (expression.slice(pos, pos + logicalOperator.length).toUpperCase() === logicalOperator.toUpperCase()) {
                     // Make sure it's a complete word for text logicals
-                    if (/^[a-zA-Z]+$/.test(log)) {
-                        const nextChar = expression[pos + log.length];
+                    if (/^[a-zA-Z]+$/.test(logicalOperator)) {
+                        const nextChar = expression[pos + logicalOperator.length];
                         if (nextChar && /[a-zA-Z_]/.test(nextChar)) continue;
                     }
-                    const normalized = log.replace('&&', 'AND').replace('||', 'OR').replace('!', 'NOT').toUpperCase();
+                    const normalized = logicalOperator.replace('&&', 'AND').replace('||', 'OR').replace('!', 'NOT').toUpperCase();
                     tokens.push({ type: 'LOGICAL', value: normalized, position: pos });
-                    pos += log.length;
+                    pos += logicalOperator.length;
                     foundLogical = true;
                     break;
                 }
@@ -516,6 +655,30 @@ export class PolicyEngine {
     }
 
     /**
+     * Test a string against a regex pattern with safety validation
+     *
+     * @param input - The string to test
+     * @param pattern - The regex pattern
+     * @returns True if the pattern matches, false otherwise
+     * @throws Error if the regex is unsafe
+     */
+    private testRegexSafe(input: string, pattern: string): boolean {
+        // Validate regex safety to prevent ReDoS attacks
+        const safetyCheck = validateRegexSafety(pattern);
+        if (!safetyCheck.safe) {
+            throw new Error(`Unsafe regex pattern: ${safetyCheck.reason}`);
+        }
+
+        // Create and test regex
+        try {
+            const regex = new RegExp(pattern);
+            return regex.test(input);
+        } catch (error) {
+            throw new Error(`Regex execution failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+    }
+
+    /**
      * Compare two values with an operator
      */
     private compare(
@@ -553,9 +716,14 @@ export class PolicyEngine {
                 return String(l).endsWith(String(r));
             case 'matches':
                 try {
-                    return new RegExp(String(r)).test(String(l));
-                } catch {
-                    return false;
+                    return this.testRegexSafe(String(l), String(r));
+                } catch (error) {
+                    // Log error for debugging but don't throw (maintain backward compatibility)
+                    // In production, this should be logged to monitoring system
+                    if (error instanceof Error && error.message.includes('Unsafe regex')) {
+                        throw error; // Throw for unsafe patterns (security)
+                    }
+                    return false; // Return false for other regex errors
                 }
             default:
                 return false;
