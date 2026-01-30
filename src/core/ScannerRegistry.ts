@@ -87,6 +87,21 @@ export interface ScannerResultMap {
     'FrontendVulnerabilityScanner': import('../services/FrontendVulnerabilityScanner.js').VulnerableLibrary[];
     'FintechScanner': import('../services/FintechScanner.js').FintechFinding[];
     'FlutterSemanticsScanner': import('../services/FlutterSemanticsScanner.js').FlutterSemanticsIssue[];
+    // v3.2 Scanner Result Types - Phase 1: Core Security
+    'SbomScanner': import('../services/SbomScanner.js').DetectedPackage[];
+    'GraphQLDeepScanner': import('../services/GraphQLDeepScanner.js').GraphQLFinding[];
+    'WebSocketAuditor': import('../services/WebSocketAuditor.js').WebSocketFinding[];
+    'CspViolationCollector': import('../services/CspViolationCollector.js').CspFinding[];
+    // v3.2 Scanner Result Types - Phase 2: AI-Powered
+    'FingerprintDetector': import('../services/FingerprintDetector.js').FingerprintFinding[];
+    // v3.2 Scanner Result Types - Phase 3: Web Platform
+    'WebRTCAnalyzer': import('../services/WebRTCAnalyzer.js').WebRTCFinding[];
+    'PwaSecurityScanner': import('../services/PwaSecurityScanner.js').PwaFinding[];
+    'ExtensionAuditScanner': import('../services/ExtensionAuditScanner.js').ExtensionFinding[];
+    'MobileSecurityScanner': import('../services/MobileSecurityScanner.js').MobileFinding[];
+    'ShadowDomScanner': import('../services/ShadowDomScanner.js').ShadowDomFinding[];
+    // v3.2 Scanner Result Types - Phase 4: Infrastructure
+    'WasmSecurityScanner': import('../services/WasmSecurityScanner.js').WasmFinding[];
     [key: string]: unknown;
 }
 

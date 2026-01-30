@@ -1,4 +1,4 @@
-# Stealth Compliance Monitor (v3.0)
+# Stealth Compliance Monitor (v3.2)
 
 <div align="center">
 
@@ -22,15 +22,67 @@
 
 Unlike static code analysis (SAST), LSCM uses headless browsers to interact with your production application like a real user—clicking buttons, submitting forms, and bypassing bot defenses—while routing all traffic through security proxies to detect vulnerabilities that only appear at runtime.
 
-## 🌟 What's New in v3.0
+## What's New in v3.2
 
-- **🚀 Fleet Mode Concurrency**: Scan hundreds of sites in parallel (`FLEET_CONCURRENCY=10`).
-- **📊 Executive Reporting**: Generate one-page PDF summaries for leadership (`--executive-report`).
-- **🛡️ Policy-as-Code**: Enforce custom pass/fail criteria via YAML (`.compliance-policy.yml`).
-- **🤖 Continuous Monitoring**: Built-in cron scheduler for daemon-mode auditing.
-- **📁 SARIF Support**: Native integration with GitHub Code Scanning.
-- **🔒 Security Hardening**: 22 vulnerabilities addressed; centralized constants, stricter path validation, and enhanced error handling (see Migration Guide).
-- **⚙️ New CLI Flags**: `--sarif`, `--policy`, `--compliance` for SARIF export and policy evaluation.
+### 🔬 Advanced Security Scanners
+- **SBOM Generator**: Detects npm packages and dependencies from runtime JavaScript. Queries OSV database for known vulnerabilities. `SBOM_SCANNER_ENABLED=true`
+- **GraphQL Deep Scanner**: Introspection detection, query depth testing, batch query analysis, and field suggestion enumeration. `GRAPHQL_SCANNER_ENABLED=true`
+- **WebSocket Auditor**: Monitors ws:// connections for plaintext auth, sensitive data leakage, and rate limiting issues. `WEBSOCKET_AUDITOR_ENABLED=true`
+- **CSP Violation Collector**: Real-time Content Security Policy violation detection via `securitypolicyviolation` events. `CSP_COLLECTOR_ENABLED=true`
+
+### 🤖 AI-Powered Analysis
+- **Visual AI Compliance**: Automated color contrast checking (WCAG AA), alt text validation, and brand color compliance against palette guides. `VISUAL_AI_COMPLIANCE_ENABLED=true`
+- **Behavioral Fingerprinting Detection**: Detects canvas, WebGL, AudioContext, and battery API fingerprinting techniques. `FINGERPRINT_DETECTION_ENABLED=true`
+- **AI-Generated Test Flows**: Uses LLM (Ollama/OpenAI) to generate test flows from page DOM structure. `AI_TEST_FLOW_GENERATOR_ENABLED=true`
+- **Smart False Positive Filter**: Confidence scoring, duplicate merging, and correlation analysis to reduce noise. `FALSE_POSITIVE_FILTER_ENABLED=true`
+- **Privacy Policy Analyzer**: GDPR Article 13/14 and CCPA compliance checking against actual cookie/tracker usage. `PRIVACY_POLICY_ANALYZER_ENABLED=true`
+
+### 🌐 Web Platform Security
+- **WebRTC Analyzer**: Detects IP leaks, insecure TURN servers, and data channel vulnerabilities. `WEBRTC_ANALYZER_ENABLED=true`
+- **PWA Security Scanner**: Service worker analysis, manifest.json security, and offline storage inspection. `PWA_SCANNER_ENABLED=true`
+- **Browser Extension Audit**: Detects extension injections and messaging vulnerabilities. `EXTENSION_AUDIT_ENABLED=true`
+- **Mobile Security Scanner**: Device orientation, touch gesture, and viewport security analysis. `MOBILE_SECURITY_SCANNER_ENABLED=true`
+- **Shadow DOM Scanner**: Web Components accessibility and security assessment. `SHADOW_DOM_SCANNER_ENABLED=true`
+
+### 🏗️ Infrastructure & DevSecOps
+- **WebAssembly Security**: WASM module analysis for memory safety and unsafe operations. `WASM_SCANNER_ENABLED=true`
+- **Container Scanner**: Dockerfile and docker-compose security auditing. `CONTAINER_SCANNER_ENABLED=true`
+- **Kubernetes Security**: Manifest analysis for security misconfigurations. `K8S_SCANNER_ENABLED=true`
+- **API Contract Testing**: OpenAPI/Swagger specification validation. `API_CONTRACT_TESTING_ENABLED=true`
+- **Chaos Engineering**: Fault injection testing for resilience validation. `CHAOS_TESTING_ENABLED=true`
+- **Multi-Region Compliance**: Geographic compliance testing across regions. `MULTI_REGION_COMPLIANCE_ENABLED=true`
+
+### 🏢 Enterprise Features
+- **FAIR Risk Quantification**: Factor Analysis of Information Risk calculations. `FAIR_RISK_QUANTIFICATION_ENABLED=true`
+- **Compliance Drift Detection**: Detects configuration drift over time. `DRIFT_DETECTION_ENABLED=true`
+- **Third-Party Risk Aggregation**: SecurityScorecard/BitSight integration. `THIRD_PARTY_RISK_ENABLED=true`
+- **Real-Time Dashboard**: Live security monitoring with WebSocket updates. `REALTIME_DASHBOARD_ENABLED=true`
+- **Evidence Vault**: Tamper-proof evidence storage for legal hold. `EVIDENCE_VAULT_ENABLED=true`
+
+### 🔌 Developer Integrations
+- **VS Code Extension**: IDE integration for instant compliance feedback. `VSCODE_INTEGRATION_ENABLED=true`
+- **GitHub App**: PR comments, checks API, and repository scanning. `GITHUB_INTEGRATION_ENABLED=true`
+- **Postman/Newman**: Collection import and CI/CD integration. `POSTMAN_INTEGRATION_ENABLED=true`
+- **JIRA/ServiceNow**: Automated ticket creation for findings. `TICKETING_INTEGRATION_ENABLED=true`
+- **Slack/Teams**: Real-time security alerts and notifications. `MESSAGING_INTEGRATION_ENABLED=true`
+
+## What's New in v3.1
+
+- **Electron App Auditing**: Scan Electron desktop apps with `--target-type=electron --electron-path=/path/to/app`. Checks for nodeIntegration, contextIsolation, remote module, CSP, and IPC exposure.
+- **Flutter Web Semantics**: Accessibility auditing for Flutter web builds with `--flutter-semantics`. Inspects `flt-semantics` DOM elements for ARIA completeness, focus management, and live regions.
+- **Local LLM Remediation**: Generate remediation code via local Ollama instance with `--ai-fix[=model]`. Post-scan processing reads findings and produces fix suggestions.
+- **Fintech Compliance Profile**: New `--profile=fintech` for financial/crypto compliance. Detects crypto-jacking, PCI-DSS violations, and wallet drainer scripts.
+- **Python Plugin Bridge**: Run custom compliance checks written in Python via `custom_checks/python/`. Scripts receive JSON context and return structured violations.
+
+## What's New in v3.0
+
+- **Fleet Mode Concurrency**: Scan hundreds of sites in parallel (`FLEET_CONCURRENCY=10`).
+- **Executive Reporting**: Generate one-page PDF summaries for leadership (`--executive-report`).
+- **Policy-as-Code**: Enforce custom pass/fail criteria via YAML (`.compliance-policy.yml`).
+- **Continuous Monitoring**: Built-in cron scheduler for daemon-mode auditing.
+- **SARIF Support**: Native integration with GitHub Code Scanning.
+- **Security Hardening**: 22 vulnerabilities addressed; centralized constants, stricter path validation, and enhanced error handling (see Migration Guide).
+- **New CLI Flags**: `--sarif`, `--policy`, `--compliance` for SARIF export and policy evaluation.
 
 ---
 
@@ -107,7 +159,7 @@ npx ts-node src/index.ts [options]
 
 | Flag | Description |
 |------|-------------|
-| `--profile=<name>` | Scan profile: `smoke`, `standard`, `deep`, `deep-active` |
+| `--profile=<name>` | Scan profile: `smoke`, `standard`, `deep`, `deep-active`, `fintech` |
 | `--active` | Enable active security scanning (aggressive payloads) |
 | `--executive-report` | Generate a PDF executive summary |
 | `--report-only` | Regenerate reports from previous scan data |
@@ -117,6 +169,11 @@ npx ts-node src/index.ts [options]
 | `--sarif[=path]` | Output SARIF 2.1 report (optional path; defaults to reports/results.sarif) |
 | `--policy=<path>` | Evaluate a specific policy YAML file during processing |
 | `--compliance` | Enable compliance mapping (SOC2/GDPR/HIPAA) during report generation |
+| `--target-type=<type>` | Target type: `web` (default), `electron` |
+| `--electron-path=<path>` | Path to Electron executable (required when `--target-type=electron`) |
+| `--electron-args=<args>` | Comma-separated args passed to Electron app |
+| `--ai-fix[=model]` | Generate AI remediation via local Ollama (default model: `codellama`) |
+| `--flutter-semantics` | Enable Flutter web semantics tree accessibility auditing |
 | `init` | Launch the interactive configuration wizard |
 
 ---
@@ -251,6 +308,112 @@ Upload SARIF results to GitHub Security tab:
   uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: reports/results.sarif
+```
+
+---
+
+## Electron App Auditing
+
+Audit Electron desktop applications for security misconfigurations using Playwright's `electron.launch()` API.
+
+```bash
+npx ts-node src/index.ts --target-type=electron --electron-path=/path/to/your-app --profile=standard
+```
+
+Checks performed:
+- `nodeIntegration` enabled in renderer (critical)
+- `contextIsolation` disabled (critical)
+- Remote module enabled (high)
+- Missing Content Security Policy (medium)
+- Exposed IPC channels (medium)
+
+---
+
+## Flutter Web Semantics Auditing
+
+Automatically detect Flutter web builds and audit their accessibility semantics tree.
+
+```bash
+npx ts-node src/index.ts --flutter-semantics --profile=standard
+```
+
+The scanner detects Flutter via `flt-glass-pane`, `flutter_service_worker.js`, or `flt-semantics-host` and checks:
+- Semantics tree presence (`flt-semantics-host` with children)
+- ARIA attribute completeness on `flt-semantics` elements
+- Focus management (at least one focusable semantic element)
+- Live regions for dynamic content announcements
+
+---
+
+## Local LLM Remediation (Ollama)
+
+Generate code-level fix suggestions for scan findings using a locally-hosted LLM via Ollama.
+
+```bash
+# Run scan then generate fixes with default model (codellama)
+npx ts-node src/index.ts --profile=standard --ai-fix
+
+# Use a specific model
+npx ts-node src/index.ts --profile=standard --ai-fix=deepseek-coder
+```
+
+Prerequisites:
+- [Ollama](https://ollama.ai) running locally on port 11434 (configurable via `OLLAMA_URL`)
+- A code-oriented model pulled: `ollama pull codellama`
+
+The service reads `fleet-summary.json` after scanning, extracts high/critical findings, and generates remediation suggestions written to `reports/ai-remediations.json`.
+
+---
+
+## Fintech Compliance Profile
+
+Specialized scanning profile for financial and cryptocurrency applications.
+
+```bash
+npx ts-node src/index.ts --profile=fintech
+```
+
+Detection modules:
+- **Crypto-jacking**: Known miner domains (coinhive, crypto-loot, etc.), mining pool WebSocket patterns, script content analysis for mining APIs
+- **PCI-DSS**: Missing security headers (HSTS, X-Frame-Options, X-Content-Type-Options), credit card numbers in localStorage/sessionStorage, payment form autocomplete attributes
+- **Wallet Drainer**: Known drainer domains, Web3 wallet injection patterns (ethereum.request, solana), suspicious contract interaction scripts
+
+Custom miner domains can be configured via `FINTECH_CUSTOM_MINER_DOMAINS` environment variable.
+
+---
+
+## Python Plugin Bridge
+
+Write custom compliance checks in Python and run them alongside TypeScript/JavaScript checks.
+
+Place Python scripts in `custom_checks/python/`:
+
+```python
+#!/usr/bin/env python3
+import json, sys
+
+context = json.loads(sys.argv[sys.argv.index('--context') + 1])
+violations = []
+
+# Your check logic here
+for header_name in ['X-Frame-Options', 'Strict-Transport-Security']:
+    if header_name not in context.get('headers', {}):
+        violations.append({
+            'id': f'missing-{header_name.lower()}',
+            'severity': 'high',
+            'message': f'Missing {header_name} header',
+            'target': context.get('url', ''),
+        })
+
+print(json.dumps({'passed': len(violations) == 0, 'violations': violations}))
+```
+
+Enable Python checks in `.env`:
+
+```bash
+PYTHON_CHECKS_ENABLED=true
+PYTHON_EXECUTABLE=python3
+PYTHON_CHECK_TIMEOUT=30000
 ```
 
 ---

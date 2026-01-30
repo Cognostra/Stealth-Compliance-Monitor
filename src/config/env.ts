@@ -178,6 +178,136 @@ export interface EnvConfig {
     PYTHON_EXECUTABLE: string;
     /** Python check timeout (ms) */
     PYTHON_CHECK_TIMEOUT: number;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 1: Core Security
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable SBOM (Software Bill of Materials) scanning */
+    SBOM_SCANNER_ENABLED: boolean;
+    /** Enable GraphQL deep security scanning */
+    GRAPHQL_SCANNER_ENABLED: boolean;
+    /** Enable WebSocket security auditing */
+    WEBSOCKET_AUDITOR_ENABLED: boolean;
+    /** Enable CSP violation collection */
+    CSP_COLLECTOR_ENABLED: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 2: AI-Powered
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable Visual AI compliance checking */
+    VISUAL_AI_COMPLIANCE_ENABLED: boolean;
+    /** Brand color palette guide path for visual compliance */
+    BRAND_GUIDE_PATH?: string;
+    /** Enable browser fingerprinting detection */
+    FINGERPRINT_DETECTION_ENABLED: boolean;
+    /** Enable AI-generated test flow generation */
+    AI_TEST_FLOW_GENERATOR_ENABLED: boolean;
+    /** Enable smart false positive filtering */
+    FALSE_POSITIVE_FILTER_ENABLED: boolean;
+    /** False positive filter confidence threshold (0-1) */
+    FP_FILTER_THRESHOLD: number;
+    /** Enable privacy policy analyzer */
+    PRIVACY_POLICY_ANALYZER_ENABLED: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 3: Web Platform
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable WebRTC security analysis */
+    WEBRTC_ANALYZER_ENABLED: boolean;
+    /** Enable PWA security scanning */
+    PWA_SCANNER_ENABLED: boolean;
+    /** Enable browser extension audit */
+    EXTENSION_AUDIT_ENABLED: boolean;
+    /** Enable mobile security scanning */
+    MOBILE_SECURITY_SCANNER_ENABLED: boolean;
+    /** Enable Shadow DOM & Web Components scanning */
+    SHADOW_DOM_SCANNER_ENABLED: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 4: Infrastructure/DevSecOps
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable WebAssembly security scanning */
+    WASM_SCANNER_ENABLED: boolean;
+    /** Enable container security scanning */
+    CONTAINER_SCANNER_ENABLED: boolean;
+    /** Enable Kubernetes security scanning */
+    K8S_SCANNER_ENABLED: boolean;
+    /** Enable API contract testing */
+    API_CONTRACT_TESTING_ENABLED: boolean;
+    /** Enable chaos engineering tests */
+    CHAOS_TESTING_ENABLED: boolean;
+    /** Enable multi-region compliance testing */
+    MULTI_REGION_COMPLIANCE_ENABLED: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 5: Integrations
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable VS Code extension integration */
+    VSCODE_INTEGRATION_ENABLED: boolean;
+    /** Enable GitHub App integration */
+    GITHUB_INTEGRATION_ENABLED: boolean;
+    /** GitHub App ID */
+    GITHUB_APP_ID?: string;
+    /** GitHub App Private Key */
+    GITHUB_PRIVATE_KEY?: string;
+    /** GitHub App Installation ID */
+    GITHUB_INSTALLATION_ID?: string;
+    /** Enable Postman/Newman integration */
+    POSTMAN_INTEGRATION_ENABLED: boolean;
+    /** Postman API Key */
+    POSTMAN_API_KEY?: string;
+    /** Enable JIRA/ServiceNow ticketing integration */
+    TICKETING_INTEGRATION_ENABLED: boolean;
+    /** JIRA base URL */
+    JIRA_BASE_URL?: string;
+    /** JIRA username */
+    JIRA_USERNAME?: string;
+    /** JIRA API token */
+    JIRA_API_TOKEN?: string;
+    /** JIRA project key */
+    JIRA_PROJECT_KEY?: string;
+    /** ServiceNow instance */
+    SERVICENOW_INSTANCE?: string;
+    /** ServiceNow username */
+    SERVICENOW_USERNAME?: string;
+    /** ServiceNow password */
+    SERVICENOW_PASSWORD?: string;
+    /** Enable Slack/Teams messaging integration */
+    MESSAGING_INTEGRATION_ENABLED: boolean;
+    /** Slack webhook URL */
+    SLACK_WEBHOOK_URL?: string;
+    /** Slack bot token */
+    SLACK_BOT_TOKEN?: string;
+    /** Slack channel */
+    SLACK_CHANNEL?: string;
+    /** Teams webhook URL */
+    TEAMS_WEBHOOK_URL?: string;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 6: Enterprise
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable FAIR risk quantification */
+    FAIR_RISK_QUANTIFICATION_ENABLED: boolean;
+    /** Organization annual revenue (for FAIR calculations) */
+    FAIR_ORGANIZATION_REVENUE?: number;
+    /** Enable compliance drift detection */
+    DRIFT_DETECTION_ENABLED: boolean;
+    /** Enable third-party risk aggregation */
+    THIRD_PARTY_RISK_ENABLED: boolean;
+    /** SecurityScorecard API Key */
+    SECURITYSCORECARD_API_KEY?: string;
+    /** BitSight API Key */
+    BITSIGHT_API_KEY?: string;
+    /** Enable real-time dashboard */
+    REALTIME_DASHBOARD_ENABLED: boolean;
+    /** Dashboard refresh interval (ms) */
+    DASHBOARD_REFRESH_INTERVAL: number;
+    /** Enable evidence vault for legal hold */
+    EVIDENCE_VAULT_ENABLED: boolean;
+    /** Evidence vault storage path */
+    EVIDENCE_VAULT_PATH: string;
+    /** Evidence retention days */
+    EVIDENCE_RETENTION_DAYS: number;
 }
 
 /**
@@ -387,6 +517,84 @@ export function loadEnvConfig(): EnvConfig {
         PYTHON_CHECKS_ENABLED: getOptional('PYTHON_CHECKS_ENABLED', 'false').toLowerCase() === 'true',
         PYTHON_EXECUTABLE: getOptional('PYTHON_EXECUTABLE', 'python3'),
         PYTHON_CHECK_TIMEOUT: getNumber('PYTHON_CHECK_TIMEOUT', 60000),
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // v3.2 FEATURE FLAGS - Phase 1: Core Security
+        // ═══════════════════════════════════════════════════════════════════════════════
+        SBOM_SCANNER_ENABLED: getOptional('SBOM_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        GRAPHQL_SCANNER_ENABLED: getOptional('GRAPHQL_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        WEBSOCKET_AUDITOR_ENABLED: getOptional('WEBSOCKET_AUDITOR_ENABLED', 'false').toLowerCase() === 'true',
+        CSP_COLLECTOR_ENABLED: getOptional('CSP_COLLECTOR_ENABLED', 'false').toLowerCase() === 'true',
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // v3.2 FEATURE FLAGS - Phase 2: AI-Powered
+        // ═══════════════════════════════════════════════════════════════════════════════
+        VISUAL_AI_COMPLIANCE_ENABLED: getOptional('VISUAL_AI_COMPLIANCE_ENABLED', 'false').toLowerCase() === 'true',
+        BRAND_GUIDE_PATH: getOptional('BRAND_GUIDE_PATH', ''),
+        FINGERPRINT_DETECTION_ENABLED: getOptional('FINGERPRINT_DETECTION_ENABLED', 'false').toLowerCase() === 'true',
+        AI_TEST_FLOW_GENERATOR_ENABLED: getOptional('AI_TEST_FLOW_GENERATOR_ENABLED', 'false').toLowerCase() === 'true',
+        FALSE_POSITIVE_FILTER_ENABLED: getOptional('FALSE_POSITIVE_FILTER_ENABLED', 'false').toLowerCase() === 'true',
+        FP_FILTER_THRESHOLD: getFloat('FP_FILTER_THRESHOLD', 0.3),
+        PRIVACY_POLICY_ANALYZER_ENABLED: getOptional('PRIVACY_POLICY_ANALYZER_ENABLED', 'false').toLowerCase() === 'true',
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // v3.2 FEATURE FLAGS - Phase 3: Web Platform
+        // ═══════════════════════════════════════════════════════════════════════════════
+        WEBRTC_ANALYZER_ENABLED: getOptional('WEBRTC_ANALYZER_ENABLED', 'false').toLowerCase() === 'true',
+        PWA_SCANNER_ENABLED: getOptional('PWA_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        EXTENSION_AUDIT_ENABLED: getOptional('EXTENSION_AUDIT_ENABLED', 'false').toLowerCase() === 'true',
+        MOBILE_SECURITY_SCANNER_ENABLED: getOptional('MOBILE_SECURITY_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        SHADOW_DOM_SCANNER_ENABLED: getOptional('SHADOW_DOM_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // v3.2 FEATURE FLAGS - Phase 4: Infrastructure/DevSecOps
+        // ═══════════════════════════════════════════════════════════════════════════════
+        WASM_SCANNER_ENABLED: getOptional('WASM_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        CONTAINER_SCANNER_ENABLED: getOptional('CONTAINER_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        K8S_SCANNER_ENABLED: getOptional('K8S_SCANNER_ENABLED', 'false').toLowerCase() === 'true',
+        API_CONTRACT_TESTING_ENABLED: getOptional('API_CONTRACT_TESTING_ENABLED', 'false').toLowerCase() === 'true',
+        CHAOS_TESTING_ENABLED: getOptional('CHAOS_TESTING_ENABLED', 'false').toLowerCase() === 'true',
+        MULTI_REGION_COMPLIANCE_ENABLED: getOptional('MULTI_REGION_COMPLIANCE_ENABLED', 'false').toLowerCase() === 'true',
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // v3.2 FEATURE FLAGS - Phase 5: Integrations
+        // ═══════════════════════════════════════════════════════════════════════════════
+        VSCODE_INTEGRATION_ENABLED: getOptional('VSCODE_INTEGRATION_ENABLED', 'false').toLowerCase() === 'true',
+        GITHUB_INTEGRATION_ENABLED: getOptional('GITHUB_INTEGRATION_ENABLED', 'false').toLowerCase() === 'true',
+        GITHUB_APP_ID: getOptional('GITHUB_APP_ID', ''),
+        GITHUB_PRIVATE_KEY: getOptional('GITHUB_PRIVATE_KEY', ''),
+        GITHUB_INSTALLATION_ID: getOptional('GITHUB_INSTALLATION_ID', ''),
+        POSTMAN_INTEGRATION_ENABLED: getOptional('POSTMAN_INTEGRATION_ENABLED', 'false').toLowerCase() === 'true',
+        POSTMAN_API_KEY: getOptional('POSTMAN_API_KEY', ''),
+        TICKETING_INTEGRATION_ENABLED: getOptional('TICKETING_INTEGRATION_ENABLED', 'false').toLowerCase() === 'true',
+        JIRA_BASE_URL: getOptional('JIRA_BASE_URL', ''),
+        JIRA_USERNAME: getOptional('JIRA_USERNAME', ''),
+        JIRA_API_TOKEN: getOptional('JIRA_API_TOKEN', ''),
+        JIRA_PROJECT_KEY: getOptional('JIRA_PROJECT_KEY', ''),
+        SERVICENOW_INSTANCE: getOptional('SERVICENOW_INSTANCE', ''),
+        SERVICENOW_USERNAME: getOptional('SERVICENOW_USERNAME', ''),
+        SERVICENOW_PASSWORD: getOptional('SERVICENOW_PASSWORD', ''),
+        MESSAGING_INTEGRATION_ENABLED: getOptional('MESSAGING_INTEGRATION_ENABLED', 'false').toLowerCase() === 'true',
+        SLACK_WEBHOOK_URL: getOptional('SLACK_WEBHOOK_URL', ''),
+        SLACK_BOT_TOKEN: getOptional('SLACK_BOT_TOKEN', ''),
+        SLACK_CHANNEL: getOptional('SLACK_CHANNEL', '#security-alerts'),
+        TEAMS_WEBHOOK_URL: getOptional('TEAMS_WEBHOOK_URL', ''),
+
+        // ═══════════════════════════════════════════════════════════════════════════════
+        // v3.2 FEATURE FLAGS - Phase 6: Enterprise
+        // ═══════════════════════════════════════════════════════════════════════════════
+        FAIR_RISK_QUANTIFICATION_ENABLED: getOptional('FAIR_RISK_QUANTIFICATION_ENABLED', 'false').toLowerCase() === 'true',
+        FAIR_ORGANIZATION_REVENUE: getOptional('FAIR_ORGANIZATION_REVENUE', '') ? 
+            parseInt(getOptional('FAIR_ORGANIZATION_REVENUE', '10000000'), 10) : 10000000,
+        DRIFT_DETECTION_ENABLED: getOptional('DRIFT_DETECTION_ENABLED', 'false').toLowerCase() === 'true',
+        THIRD_PARTY_RISK_ENABLED: getOptional('THIRD_PARTY_RISK_ENABLED', 'false').toLowerCase() === 'true',
+        SECURITYSCORECARD_API_KEY: getOptional('SECURITYSCORECARD_API_KEY', ''),
+        BITSIGHT_API_KEY: getOptional('BITSIGHT_API_KEY', ''),
+        REALTIME_DASHBOARD_ENABLED: getOptional('REALTIME_DASHBOARD_ENABLED', 'false').toLowerCase() === 'true',
+        DASHBOARD_REFRESH_INTERVAL: getNumber('DASHBOARD_REFRESH_INTERVAL', 5000),
+        EVIDENCE_VAULT_ENABLED: getOptional('EVIDENCE_VAULT_ENABLED', 'false').toLowerCase() === 'true',
+        EVIDENCE_VAULT_PATH: getOptional('EVIDENCE_VAULT_PATH', './evidence'),
+        EVIDENCE_RETENTION_DAYS: getNumber('EVIDENCE_RETENTION_DAYS', 2555),
     };
 
     // Parse Performance Budget

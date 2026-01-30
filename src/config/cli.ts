@@ -23,6 +23,92 @@ export interface CliOptions {
     aiFixModel?: string;
     /** Enable Flutter semantics scanning */
     flutterSemanticsFlag: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 1: Core Security
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable SBOM (Software Bill of Materials) scanning */
+    sbomScannerFlag: boolean;
+    /** Enable GraphQL deep security scanning */
+    graphqlScannerFlag: boolean;
+    /** Enable WebSocket security auditing */
+    websocketAuditorFlag: boolean;
+    /** Enable CSP violation collection */
+    cspCollectorFlag: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 2: AI-Powered
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable Visual AI compliance checking */
+    visualAiComplianceFlag: boolean;
+    /** Path to brand color palette guide */
+    brandGuidePath?: string;
+    /** Enable browser fingerprinting detection */
+    fingerprintDetectionFlag: boolean;
+    /** Enable AI-generated test flow generation */
+    aiTestFlowGeneratorFlag: boolean;
+    /** Enable smart false positive filtering */
+    falsePositiveFilterFlag: boolean;
+    /** Enable privacy policy analyzer */
+    privacyPolicyAnalyzerFlag: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 3: Web Platform
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable WebRTC security analysis */
+    webrtcAnalyzerFlag: boolean;
+    /** Enable PWA security scanning */
+    pwaScannerFlag: boolean;
+    /** Enable browser extension audit */
+    extensionAuditFlag: boolean;
+    /** Enable mobile security scanning */
+    mobileSecurityScannerFlag: boolean;
+    /** Enable Shadow DOM & Web Components scanning */
+    shadowDomScannerFlag: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 4: Infrastructure/DevSecOps
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable WebAssembly security scanning */
+    wasmScannerFlag: boolean;
+    /** Enable container security scanning */
+    containerScannerFlag: boolean;
+    /** Enable Kubernetes security scanning */
+    k8sScannerFlag: boolean;
+    /** Enable API contract testing */
+    apiContractTestingFlag: boolean;
+    /** Enable chaos engineering tests */
+    chaosTestingFlag: boolean;
+    /** Enable multi-region compliance testing */
+    multiRegionComplianceFlag: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 5: Integrations
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable VS Code extension integration */
+    vscodeIntegrationFlag: boolean;
+    /** Enable GitHub App integration */
+    githubIntegrationFlag: boolean;
+    /** Enable Postman/Newman integration */
+    postmanIntegrationFlag: boolean;
+    /** Enable JIRA/ServiceNow ticketing integration */
+    ticketingIntegrationFlag: boolean;
+    /** Enable Slack/Teams messaging integration */
+    messagingIntegrationFlag: boolean;
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 6: Enterprise
+    // ═══════════════════════════════════════════════════════════════════════════════
+    /** Enable FAIR risk quantification */
+    fairRiskQuantificationFlag: boolean;
+    /** Enable compliance drift detection */
+    driftDetectionFlag: boolean;
+    /** Enable third-party risk aggregation */
+    thirdPartyRiskFlag: boolean;
+    /** Enable real-time dashboard */
+    realtimeDashboardFlag: boolean;
+    /** Enable evidence vault for legal hold */
+    evidenceVaultFlag: boolean;
 }
 
 export function parseCliOptions(args: string[]): CliOptions {
@@ -58,6 +144,62 @@ export function parseCliOptions(args: string[]): CliOptions {
     // Flutter semantics flag
     const flutterSemanticsFlag = args.includes('--flutter-semantics');
 
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 1: Core Security
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const sbomScannerFlag = args.includes('--sbom');
+    const graphqlScannerFlag = args.includes('--graphql');
+    const websocketAuditorFlag = args.includes('--websocket');
+    const cspCollectorFlag = args.includes('--csp');
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 2: AI-Powered
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const visualAiComplianceFlag = args.includes('--visual-ai');
+    const brandGuidePathArg = args.find(arg => arg.startsWith('--brand-guide='));
+    const brandGuidePath = brandGuidePathArg ? brandGuidePathArg.split('=')[1] : undefined;
+    const fingerprintDetectionFlag = args.includes('--fingerprint');
+    const aiTestFlowGeneratorFlag = args.includes('--ai-flows');
+    const falsePositiveFilterFlag = args.includes('--fp-filter');
+    const privacyPolicyAnalyzerFlag = args.includes('--privacy');
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 3: Web Platform
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const webrtcAnalyzerFlag = args.includes('--webrtc');
+    const pwaScannerFlag = args.includes('--pwa');
+    const extensionAuditFlag = args.includes('--extension');
+    const mobileSecurityScannerFlag = args.includes('--mobile');
+    const shadowDomScannerFlag = args.includes('--shadow-dom');
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 4: Infrastructure/DevSecOps
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const wasmScannerFlag = args.includes('--wasm');
+    const containerScannerFlag = args.includes('--container');
+    const k8sScannerFlag = args.includes('--k8s');
+    const apiContractTestingFlag = args.includes('--api-contract');
+    const chaosTestingFlag = args.includes('--chaos');
+    const multiRegionComplianceFlag = args.includes('--multi-region');
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 5: Integrations
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const vscodeIntegrationFlag = args.includes('--vscode');
+    const githubIntegrationFlag = args.includes('--github');
+    const postmanIntegrationFlag = args.includes('--postman');
+    const ticketingIntegrationFlag = args.includes('--ticketing');
+    const messagingIntegrationFlag = args.includes('--messaging');
+
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // v3.2 FEATURE FLAGS - Phase 6: Enterprise
+    // ═══════════════════════════════════════════════════════════════════════════════
+    const fairRiskQuantificationFlag = args.includes('--fair-risk');
+    const driftDetectionFlag = args.includes('--drift');
+    const thirdPartyRiskFlag = args.includes('--third-party-risk');
+    const realtimeDashboardFlag = args.includes('--dashboard');
+    const evidenceVaultFlag = args.includes('--evidence');
+
     return {
         args,
         profileName,
@@ -72,6 +214,43 @@ export function parseCliOptions(args: string[]): CliOptions {
         aiFixFlag,
         aiFixModel,
         flutterSemanticsFlag,
+        // v3.2 Phase 1
+        sbomScannerFlag,
+        graphqlScannerFlag,
+        websocketAuditorFlag,
+        cspCollectorFlag,
+        // v3.2 Phase 2
+        visualAiComplianceFlag,
+        brandGuidePath,
+        fingerprintDetectionFlag,
+        aiTestFlowGeneratorFlag,
+        falsePositiveFilterFlag,
+        privacyPolicyAnalyzerFlag,
+        // v3.2 Phase 3
+        webrtcAnalyzerFlag,
+        pwaScannerFlag,
+        extensionAuditFlag,
+        mobileSecurityScannerFlag,
+        shadowDomScannerFlag,
+        // v3.2 Phase 4
+        wasmScannerFlag,
+        containerScannerFlag,
+        k8sScannerFlag,
+        apiContractTestingFlag,
+        chaosTestingFlag,
+        multiRegionComplianceFlag,
+        // v3.2 Phase 5
+        vscodeIntegrationFlag,
+        githubIntegrationFlag,
+        postmanIntegrationFlag,
+        ticketingIntegrationFlag,
+        messagingIntegrationFlag,
+        // v3.2 Phase 6
+        fairRiskQuantificationFlag,
+        driftDetectionFlag,
+        thirdPartyRiskFlag,
+        realtimeDashboardFlag,
+        evidenceVaultFlag,
     };
 }
 
