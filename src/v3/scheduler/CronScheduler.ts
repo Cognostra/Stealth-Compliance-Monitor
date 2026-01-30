@@ -119,8 +119,8 @@ export class CronScheduler {
      * @example
      * ```typescript
      * const scheduler = new CronScheduler(logger);
-     * scheduler.start('*/5 * * * *', async () => {
-     *   await runCompliance Scan();
+     * scheduler.start('0/5 * * * *', async () => {
+     *   await runComplianceScan();
      * });
      *
      * // Later, when shutting down
@@ -183,7 +183,7 @@ export class CronScheduler {
      * @example
      * ```typescript
      * const scheduler = new CronScheduler(logger);
-     * scheduler.start('*/5 * * * *', scanTask);
+     * scheduler.start('0/5 * * * *', scanTask);
      *
      * // Monitor scheduler health
      * setInterval(() => {
